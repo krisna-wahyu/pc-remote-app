@@ -1,0 +1,15 @@
+{
+  "appId": "com.krisna.pcremote",
+  "appName": "PC Remote",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#0b0b0d",
+    "adjustMarginsForEdgeToEdge": "force"
+  }
+}

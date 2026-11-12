@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ikon PC Remote: monitor merah + tombol power putih (area aman ikon adaptif = 66dp di tengah). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- cahaya merah lembut di belakang monitor -->
+    <path
+        android:fillColor="#33E11D2E"
+        android:pathData="M54,22a32,32 0,1 1,0 64a32,32 0,1 1,0 -64z" />
+    <!-- layar -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF3B4A"
+        android:strokeWidth="4.5"
+        android:strokeLineJoin="round"
+        android:pathData="M37,35h34a5,5 0,0 1,5 5v22a5,5 0,0 1,-5 5h-34a5,5 0,0 1,-5 -5v-22a5,5 0,0 1,5 -5z" />
+    <!-- kaki monitor -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF3B4A"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,67v8M44,76h20" />
+    <!-- power -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,42.5v8.5M47.6,46.6a9,9 0,1 0,12.8 0" />
+</vector>

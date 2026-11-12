@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/pc_red</item>
+        <item name="colorPrimaryDark">@color/pc_bg</item>
+        <item name="colorAccent">@color/pc_red</item>
+    </style>
+
+    <!-- Tema aplikasi: gelap, status bar & navigation bar hitam. -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+        <item name="android:windowBackground">@color/pc_bg</item>
+        <item name="android:statusBarColor">@color/pc_bg</item>
+        <item name="android:navigationBarColor">@color/pc_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- Layar pembuka: Android 12+ memakai ikon di atas latar hitam, versi lama memakai @drawable/splash. -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/pc_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

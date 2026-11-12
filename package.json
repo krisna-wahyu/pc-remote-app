@@ -1,0 +1,18 @@
+{
+  "name": "pc-remote-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aplikasi Android untuk mengendalikan PC lewat pc-remote-bot (pengganti chat Telegram).",
+  "scripts": {
+    "sync": "cap sync android",
+    "build:apk": "cap sync android && cd android && gradlew.bat assembleRelease",
+    "apk": "node scripts/copy-apk.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.0",
+    "@capacitor/core": "^7.4.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.0"
+  }
+}

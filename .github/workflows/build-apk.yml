@@ -1,0 +1,91 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync web assets ke Android
+        run: npx cap sync android
+
+      - name: Build APK debug
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Siapkan file APK
+        id: apk
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          NAME="PC-Remote-${SHORT_SHA}.apk"
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk "out/$NAME"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "out/PC-Remote.apk"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "out/$NAME" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: out/${{ steps.apk.outputs.name }}
+          retention-days: 30
+
+      - name: Perbarui release "latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest out/PC-Remote.apk \
+            --title "PC Remote (build terbaru)" \
+            --notes "Build otomatis dari commit ${GITHUB_SHA::7}: ${{ github.event.head_commit.message || 'manual run' }}" \
+            --prerelease \
+            --target "$GITHUB_SHA"
+
+      - name: Tulis summary
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          DIRECT="${REPO_URL}/releases/download/latest/PC-Remote.apk"
+          {
+            echo "## 📱 PC Remote APK siap"
+            echo
+            echo "### [⬇️ Download PC-Remote.apk](${DIRECT})"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`${GITHUB_SHA::7}\` ${COMMIT_MSG%%$'\n'*} |"
+            echo "| Ukuran | ${{ steps.apk.outputs.size }} |"
+            echo "| Artifact (zip, 30 hari) | [${{ steps.apk.outputs.name }}](${{ steps.upload.outputs.artifact-url }}) |"
+            echo "| Halaman release | [latest](${REPO_URL}/releases/tag/latest) |"
+          } >> "$GITHUB_STEP_SUMMARY"

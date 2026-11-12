@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0b0b0d">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' http: https: blob: data:; connect-src http: https:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>PC Remote</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- ============ Layar sambung ============ -->
+  <section id="connect" class="connect" hidden>
+    <div class="connect-glow"></div>
+    <div class="connect-inner">
+      <div class="logo logo-lg" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="7" y="9" width="34" height="23" rx="4"/><path d="M18 39h12M24 32v7"/><path class="pw" d="M24 15v6M19.6 17.6a6 6 0 1 0 8.8 0"/></svg>
+      </div>
+      <h1>PC Remote</h1>
+      <p class="lead">Kendalikan PC dari HP, tanpa lewat server Telegram.</p>
+
+      <form id="connectForm" class="card form" autocomplete="off">
+        <label>Alamat server
+          <input id="cfServer" inputmode="url" placeholder="http://100.x.x.x:8787" required>
+        </label>
+        <label>Token
+          <input id="cfToken" type="password" placeholder="Token dari /app_pair" required>
+        </label>
+        <p id="cfError" class="form-error" hidden></p>
+        <button class="btn btn-primary btn-block" id="cfSubmit" type="submit">Sambungkan</button>
+      </form>
+
+      <div class="hint">
+        <b>Belum punya alamat &amp; token?</b>
+        Kirim <code>/app_pair</code> ke bot Telegram, atau jalankan
+        <code>node bot.js --run app_pair</code> di PC.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Kunci PIN ============ -->
+  <section id="lock" class="lock" hidden>
+    <div class="connect-glow"></div>
+    <div class="lock-inner">
+      <div class="logo logo-lg" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="7" y="9" width="34" height="23" rx="4"/><path d="M18 39h12M24 32v7"/><path class="pw" d="M24 15v6M19.6 17.6a6 6 0 1 0 8.8 0"/></svg>
+      </div>
+      <h2 id="lockTitle">Masukkan PIN</h2>
+      <p id="lockSub" class="lead">PC Remote terkunci</p>
+      <div id="pinDots" class="pin-dots" aria-hidden="true"></div>
+      <p id="lockError" class="form-error" hidden></p>
+      <div class="keypad" id="keypad">
+        <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+        <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+        <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+        <button type="button" data-k="del" aria-label="Hapus">⌫</button><button type="button" data-k="0">0</button><button type="button" data-k="ok" class="ok" aria-label="OK">✓</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Aplikasi ============ -->
+  <section id="main" class="main" hidden>
+    <header class="topbar">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="7" y="9" width="34" height="23" rx="4"/><path d="M18 39h12M24 32v7"/><path class="pw" d="M24 15v6M19.6 17.6a6 6 0 1 0 8.8 0"/></svg>
+      </div>
+      <div class="topbar-title">
+        <strong>PC Remote</strong>
+        <span id="hostName">—</span>
+      </div>
+      <span id="conn" class="conn conn-wait"><i></i><span>Menyambung…</span></span>
+      <button class="icon-btn" id="openSettings" aria-label="Pengaturan">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </header>
+
+    <div id="devBanner" class="dev-banner" hidden>
+      <div>
+        <span class="dev-label">DEV MODE</span>
+        <strong id="devProject">—</strong>
+      </div>
+      <button class="btn btn-ghost-light btn-sm" data-command="/dev_mode_exit">Keluar</button>
+    </div>
+
+    <!-- Beranda -->
+    <div id="tabHome" class="view">
+      <div class="hero card">
+        <div class="hero-text">
+          <span class="eyebrow" id="greeting">Selamat datang</span>
+          <h2 id="heroHost">PC</h2>
+          <p id="heroStatus">Menghubungkan ke PC…</p>
+        </div>
+        <div class="hero-orb" aria-hidden="true"><span></span></div>
+      </div>
+
+      <h3 class="section-title">Menu</h3>
+      <div id="menuGrid" class="tile-grid"></div>
+      <p id="menuEmpty" class="empty" hidden>Menu belum termuat.</p>
+    </div>
+
+    <!-- Aktivitas -->
+    <div id="tabFeed" class="view" hidden>
+      <div id="feed" class="feed" aria-live="polite"></div>
+      <button id="newPill" class="new-pill" hidden>Pesan baru ↓</button>
+    </div>
+
+    <form id="composer" class="composer" hidden>
+      <label class="icon-btn attach" aria-label="Kirim foto / file">
+        <input id="fileInput" type="file" accept="image/*,application/pdf,.txt,.log,.zip" hidden>
+        <svg viewBox="0 0 24 24"><path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+      </label>
+      <textarea id="input" rows="1" placeholder="Ketik balasan…" enterkeyhint="send"></textarea>
+      <button class="send" id="sendBtn" type="submit" aria-label="Kirim">
+        <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+      </button>
+    </form>
+
+    <nav class="tabbar">
+      <button class="tab active" data-tab="home">
+        <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>Beranda</span>
+      </button>
+      <button class="tab" data-tab="feed">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Aktivitas</span>
+        <b id="unread" class="badge" hidden>0</b>
+      </button>
+    </nav>
+  </section>
+
+  <!-- ============ Pengaturan ============ -->
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet-panel" role="dialog" aria-label="Pengaturan">
+      <div class="sheet-handle"></div>
+      <h3>Pengaturan</h3>
+      <dl class="kv">
+        <dt>Server</dt><dd id="setServer">—</dd>
+        <dt>PC</dt><dd id="setHost">—</dd>
+        <dt>Status</dt><dd id="setConn">—</dd>
+      </dl>
+      <button class="btn btn-block" id="lockNow">Kunci sekarang</button>
+      <button class="btn btn-block" id="rotateToken">Ganti token (putuskan perangkat lain)</button>
+      <button class="btn btn-block" id="clearHistory">Bersihkan riwayat aktivitas</button>
+      <button class="btn btn-danger btn-block" id="disconnect">Putuskan &amp; ganti server</button>
+      <button class="btn btn-ghost btn-block" data-close>Tutup</button>
+    </div>
+  </div>
+
+  <!-- Penampil foto -->
+  <div id="viewer" class="viewer" hidden>
+    <img id="viewerImg" alt="">
+    <button class="icon-btn viewer-close" data-close aria-label="Tutup">
+      <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
