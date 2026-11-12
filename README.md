@@ -1,5 +1,13 @@
 # PC Remote (Android)
 
+[![Versi APK](https://img.shields.io/github/v/release/krisna-wahyu/pc-remote-app?label=APK&logo=android)](https://github.com/krisna-wahyu/pc-remote-app/releases/latest)
+[![Build APK](https://github.com/krisna-wahyu/pc-remote-app/actions/workflows/build-apk.yml/badge.svg)](https://github.com/krisna-wahyu/pc-remote-app/actions/workflows/build-apk.yml)
+
+### [⬇️ Download APK terbaru](https://github.com/krisna-wahyu/pc-remote-app/releases/latest/download/PC-Remote.apk)
+
+APK dibangun otomatis oleh GitHub Actions setiap push ke `main`. Versi lama ada di
+[Releases](https://github.com/krisna-wahyu/pc-remote-app/releases).
+
 Aplikasi Android untuk mengendalikan PC lewat **pc-remote-bot**, tanpa lewat server Telegram.
 Isinya hanya tampilan: semua logika (Open Project, Dev Mode, DB App, WordPress, …) tetap di
 `C:\laragon\www\pc-remote-bot`. Aplikasi berbicara dengan server API bot (`src/app/server.js`, port 8787).

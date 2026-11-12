@@ -29,26 +29,66 @@ jobs:
           java-version: 21
           cache: gradle
 
+      - name: Tentukan versi
+        id: ver
+        run: |
+          # Versi dasar diambil dari android/app/build.gradle (default versionName), lalu + nomor build.
+          BASE=$(grep -oP 'appVersionName.*?"\K[0-9.]+' android/app/build.gradle)
+          VERSION="${BASE}.${GITHUB_RUN_NUMBER}"
+          CODE=$((100 + GITHUB_RUN_NUMBER))
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Versi: $VERSION (code $CODE)"
+
       - name: Install dependencies
         run: npm ci
 
       - name: Sync web assets ke Android
         run: npx cap sync android
 
-      - name: Build APK debug
+      # Jika secret keystore diisi, APK ditandatangani dengan kunci release yang sama dengan build lokal
+      # (sehingga bisa update di HP tanpa uninstall). Tanpa secret, dipakai tanda tangan debug.
+      - name: Siapkan keystore release
+        id: sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            mkdir -p keystore
+            echo "$KEYSTORE_BASE64" | base64 -d > keystore/release.jks
+            {
+              echo "storeFile=release.jks"
+              echo "storePassword=$KEYSTORE_PASSWORD"
+              echo "keyAlias=$KEY_ALIAS"
+              echo "keyPassword=$KEY_PASSWORD"
+            } > keystore/keystore.properties
+            echo "type=release" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=debug" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          TASK=assembleDebug
+          [ "${{ steps.sign.outputs.type }}" = "release" ] && TASK=assembleRelease
+          ./gradlew "$TASK" --no-daemon \
+            -PappVersionName="${{ steps.ver.outputs.version }}" \
+            -PappVersionCode="${{ steps.ver.outputs.code }}"
 
       - name: Siapkan file APK
         id: apk
         run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          NAME="PC-Remote-${SHORT_SHA}.apk"
+          TYPE="${{ steps.sign.outputs.type }}"
+          SRC="android/app/build/outputs/apk/$TYPE/app-$TYPE.apk"
+          NAME="PC-Remote-v${{ steps.ver.outputs.version }}.apk"
           mkdir -p out
-          cp android/app/build/outputs/apk/debug/app-debug.apk "out/$NAME"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "out/PC-Remote.apk"
+          cp "$SRC" "out/$NAME"
+          cp "$SRC" "out/PC-Remote.apk"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "size=$(du -h "out/$NAME" | cut -f1)" >> "$GITHUB_OUTPUT"
 
@@ -60,32 +100,38 @@ jobs:
           path: out/${{ steps.apk.outputs.name }}
           retention-days: 30
 
-      - name: Perbarui release "latest"
+      - name: Buat release
         env:
           GH_TOKEN: ${{ github.token }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          gh release delete latest --cleanup-tag -y || true
-          gh release create latest out/PC-Remote.apk \
-            --title "PC Remote (build terbaru)" \
-            --notes "Build otomatis dari commit ${GITHUB_SHA::7}: ${{ github.event.head_commit.message || 'manual run' }}" \
-            --prerelease \
-            --target "$GITHUB_SHA"
+          # Bersihkan release lama bertag "latest" dari versi workflow sebelumnya.
+          gh release delete latest --cleanup-tag -y 2>/dev/null || true
+          gh release create "v$VERSION" out/PC-Remote.apk "out/${{ steps.apk.outputs.name }}" \
+            --title "PC Remote v$VERSION" \
+            --notes "Build otomatis dari commit ${GITHUB_SHA::7}: ${COMMIT_MSG:-manual run}" \
+            --target "$GITHUB_SHA" \
+            --latest
 
       - name: Tulis summary
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
-          DIRECT="${REPO_URL}/releases/download/latest/PC-Remote.apk"
+          DIRECT="${REPO_URL}/releases/download/v${VERSION}/PC-Remote.apk"
           {
-            echo "## 📱 PC Remote APK siap"
+            echo "## 📱 PC Remote v${VERSION}"
             echo
-            echo "### [⬇️ Download PC-Remote.apk](${DIRECT})"
+            echo "### [⬇️ Download PC-Remote.apk (v${VERSION})](${DIRECT})"
             echo
             echo "| | |"
             echo "|---|---|"
+            echo "| Versi | \`${VERSION}\` (versionCode ${{ steps.ver.outputs.code }}) |"
+            echo "| Tanda tangan | ${{ steps.sign.outputs.type }} |"
             echo "| Commit | \`${GITHUB_SHA::7}\` ${COMMIT_MSG%%$'\n'*} |"
             echo "| Ukuran | ${{ steps.apk.outputs.size }} |"
             echo "| Artifact (zip, 30 hari) | [${{ steps.apk.outputs.name }}](${{ steps.upload.outputs.artifact-url }}) |"
-            echo "| Halaman release | [latest](${REPO_URL}/releases/tag/latest) |"
+            echo "| Halaman release | [v${VERSION}](${REPO_URL}/releases/tag/v${VERSION}) |"
           } >> "$GITHUB_STEP_SUMMARY"
