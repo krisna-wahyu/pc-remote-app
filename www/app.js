@@ -603,13 +603,24 @@ $$('#themePicker button').forEach((b) => b.addEventListener('click', () => {
   window.pcTheme?.set(b.dataset.themePref);
   renderThemePicker();
 }));
-renderThemePicker();
+try { renderThemePicker(); } catch (e) { console.error(e); }
 
 // ---------- Update aplikasi (GitHub Releases) ----------
 // APK dibangun GitHub Actions dan dirilis sebagai vX.Y.N; plugin native AppUpdate mengunduh & membuka installer.
 const UPDATE_REPO = 'krisna-wahyu/pc-remote-app';
 const UPDATE_CHECK_EVERY_MS = 6 * 60 * 60 * 1000; // cek otomatis maksimal tiap 6 jam (batas API GitHub)
-const AppUpdate = window.Capacitor?.isNativePlatform?.() ? window.Capacitor.registerPlugin('AppUpdate') : null;
+const AppUpdate = (() => {
+  let p = null;
+  try { p = window.pcNative ? window.pcNative('AppUpdate') : null; } catch { p = null; }
+  if (!p) return null;
+  return {
+    getInfo: () => p.call('getInfo'),
+    canInstall: () => p.call('canInstall'),
+    openInstallSettings: () => p.call('openInstallSettings'),
+    downloadAndInstall: (opts) => p.call('downloadAndInstall', opts),
+    addListener: (event, cb) => p.addListener(event, cb),
+  };
+})();
 const upd = { current: '', latest: null, checking: false, installing: false, error: '' };
 
 function cmpVersion(a, b) {
@@ -726,7 +737,7 @@ async function initUpdate() {
   const last = Number(local.get('updateCheckedAt')) || 0;
   if (AppUpdate && Date.now() - last > UPDATE_CHECK_EVERY_MS) checkUpdate();
 }
-initUpdate();
+initUpdate().catch((e) => console.error(e));
 
 // ---------- Sambung / kunci PIN / putus ----------
 function showOnly(id) {
