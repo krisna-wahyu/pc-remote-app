@@ -85,6 +85,9 @@ body {
   overscroll-behavior: none;
 }
 [hidden] { display: none !important; }
+/* Aplikasi, bukan halaman web: matikan pinch-zoom & zoom ketuk-ganda (hanya geser yang diizinkan).
+   Penampil foto (.viewer) sengaja tidak termasuk di sini. */
+.connect, .lock, .main, .sheet { touch-action: pan-x pan-y; }
 button { font: inherit; color: inherit; }
 svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 6px; }
@@ -265,6 +268,10 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 .msg.bot { align-self: flex-start; }
 .msg.me { align-self: flex-end; align-items: flex-end; }
+/* Pesan bertombol selalu selebar maksimum supaya tombol pilihan sama besar di semua menu
+   (label pendek seperti "🖥 PC" tidak lagi membuat tombol menyempit). */
+.msg.has-kb { width: 88%; max-width: 560px; }
+.msg.has-kb .bubble { align-self: flex-start; max-width: 100%; }
 .bubble {
   position: relative; padding: 10px 14px 8px; border-radius: 18px;
   white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;

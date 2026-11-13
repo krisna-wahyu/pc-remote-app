@@ -185,6 +185,8 @@ function buildMessage(m) {
       img.src = url;
       img.alt = m.file.name || 'foto';
       img.addEventListener('click', () => openViewer(url));
+      // Gambar memanjangkan chat setelah dimuat → tetap di bawah jika pengguna memang di bawah.
+      img.addEventListener('load', () => { if (atBottom && state.tab === 'feed') scrollBottom(false); });
       bubble.appendChild(img);
     } else {
       const a = document.createElement('a');
@@ -244,6 +246,7 @@ function buildMessage(m) {
       kb.appendChild(r);
     });
     wrap.appendChild(kb);
+    wrap.classList.add('has-kb'); // lebar penuh: ukuran tombol tidak bergantung panjang label
   }
   return wrap;
 }
@@ -251,10 +254,24 @@ function buildMessage(m) {
 function nearBottom() {
   return feedView.scrollHeight - feedView.scrollTop - feedView.clientHeight < 140;
 }
+// "Menempel di bawah" dicatat dari posisi gulir terakhir, bukan diukur saat pesan datang:
+// saat smooth-scroll masih berjalan atau gambar baru dimuat, posisi sesaat bisa belum di bawah.
+let atBottom = true;
+let autoScrollUntil = 0; // selama smooth-scroll otomatis, posisi antara diabaikan
 function scrollBottom(smooth) {
+  atBottom = true;
+  autoScrollUntil = smooth ? Date.now() + 800 : 0;
   feedView.scrollTo({ top: feedView.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
   $('#newPill').hidden = true;
 }
+feedView.addEventListener('scroll', () => {
+  const bottom = nearBottom();
+  if (!bottom && Date.now() < autoScrollUntil) return;
+  atBottom = bottom;
+  if (bottom) $('#newPill').hidden = true;
+}, { passive: true });
+// Pengguna menyentuh / menggulir sendiri → hentikan anggapan "sedang auto-scroll".
+for (const ev of ['touchstart', 'wheel']) feedView.addEventListener(ev, () => { autoScrollUntil = 0; }, { passive: true });
 
 // Menu utama lama disembunyikan, hanya yang terakhir tampil.
 function hideOldMenus() {
@@ -303,7 +320,7 @@ function applyMessage(m, live) {
   }
   const isNew = !state.messages.has(m.id);
   state.messages.set(m.id, m);
-  const stick = nearBottom();
+  const stick = atBottom || nearBottom();
   const el = buildMessage(m);
   if (existing) {
     existing.replaceWith(el);
