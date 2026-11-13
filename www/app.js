@@ -564,10 +564,20 @@ function pushLayer(name) { layers.push(name); history.pushState({ layer: name },
 function closeTop() { if (layers.length) history.back(); }
 window.addEventListener('popstate', () => {
   const top = layers.pop();
-  if (top === 'viewer') $('#viewer').hidden = true;
+  if (top === 'viewer') closeViewerNow();
   else if (top === 'sheet') $('#sheet').hidden = true;
   else if (top === 'feed') showTab('home');
 });
+
+// Dipanggil MainActivity.java saat tombol Back Android ditekan (seperti navigate(-1)).
+// true  → ada lapisan yang ditutup, aplikasi tetap terbuka;
+// false → tidak ada yang bisa ditutup, Android menjalankan Back bawaan (keluar ke layar utama HP).
+window.pcHandleBack = function () {
+  if ($('#main').hidden) return false;
+  if (layers.length) { closeTop(); return true; }
+  if (state.tab === 'feed') { showTab('home'); return true; } // mis. setelah buka kunci, catatan lapisan kosong
+  return false;
+};
 
 function showTab(tab) {
   state.tab = tab;
@@ -589,8 +599,127 @@ $$('.tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.
 
 $('#openSettings').addEventListener('click', () => { $('#sheet').hidden = false; pushLayer('sheet'); });
 $$('#sheet [data-close]').forEach((el) => el.addEventListener('click', closeTop));
-function openViewer(url) { $('#viewerImg').src = url; $('#viewer').hidden = false; pushLayer('viewer'); }
-$('#viewer').addEventListener('click', closeTop);
+// ---------- Penampil foto: cubit dua jari, ketuk-ganda, geser ----------
+// Zoom bawaan WebView dimatikan (Capacitor zoomEnabled=false + viewport user-scalable=no),
+// jadi zoom foto dibuat sendiri dengan transform CSS.
+const viewerEl = $('#viewer');
+const viewerImg = $('#viewerImg');
+const zoom = { s: 1, x: 0, y: 0, pts: new Map(), pinch: null, pan: null, moved: false, downAt: 0, lastTap: null };
+const ZOOM_MAX = 5;
+const ZOOM_DOUBLE = 2.5;
+
+function applyZoom(animate) {
+  viewerImg.style.transition = animate ? 'transform .22s ease' : 'none';
+  viewerImg.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+}
+function clampZoom() {
+  const maxX = Math.max(0, (viewerImg.offsetWidth * zoom.s - viewerEl.clientWidth) / 2);
+  const maxY = Math.max(0, (viewerImg.offsetHeight * zoom.s - viewerEl.clientHeight) / 2);
+  zoom.x = Math.min(maxX, Math.max(-maxX, zoom.x));
+  zoom.y = Math.min(maxY, Math.max(-maxY, zoom.y));
+}
+function resetZoom(animate) { zoom.s = 1; zoom.x = 0; zoom.y = 0; applyZoom(animate); }
+// Ubah skala dengan titik (px, py) di layar tetap di bawah jari.
+function zoomAt(newScale, px, py, base = zoom) {
+  const s = Math.min(ZOOM_MAX, Math.max(1, newScale));
+  const r = viewerEl.getBoundingClientRect();
+  const fx = px - (r.left + r.width / 2);
+  const fy = py - (r.top + r.height / 2);
+  zoom.x = fx - (fx - base.x) * (s / base.s);
+  zoom.y = fy - (fy - base.y) * (s / base.s);
+  zoom.s = s;
+  clampZoom();
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+viewerEl.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.viewer-close')) return;
+  viewerEl.setPointerCapture(e.pointerId);
+  zoom.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (zoom.pts.size === 1) {
+    zoom.moved = false;
+    zoom.downAt = Date.now();
+    zoom.downOnImg = e.target === viewerImg; // target pointerup selalu viewerEl karena pointer capture
+    zoom.pan = { px: e.clientX, py: e.clientY, x: zoom.x, y: zoom.y };
+  } else if (zoom.pts.size === 2) {
+    const [a, b] = [...zoom.pts.values()];
+    zoom.pinch = { d: dist(a, b), m: mid(a, b), s: zoom.s, x: zoom.x, y: zoom.y };
+    zoom.pan = null;
+    zoom.moved = true;
+  }
+});
+viewerEl.addEventListener('pointermove', (e) => {
+  if (!zoom.pts.has(e.pointerId)) return;
+  zoom.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (zoom.pinch && zoom.pts.size >= 2) {
+    const [a, b] = [...zoom.pts.values()];
+    const m = mid(a, b);
+    // Skala mengikuti jarak jari; pergeseran titik tengah ikut menggeser gambar.
+    zoomAt(zoom.pinch.s * (dist(a, b) / zoom.pinch.d), zoom.pinch.m.x, zoom.pinch.m.y, zoom.pinch);
+    zoom.x += m.x - zoom.pinch.m.x;
+    zoom.y += m.y - zoom.pinch.m.y;
+    clampZoom();
+    applyZoom(false);
+  } else if (zoom.pan) {
+    const dx = e.clientX - zoom.pan.px;
+    const dy = e.clientY - zoom.pan.py;
+    if (Math.hypot(dx, dy) > 8) zoom.moved = true;
+    if (zoom.s > 1) {
+      zoom.x = zoom.pan.x + dx;
+      zoom.y = zoom.pan.y + dy;
+      clampZoom();
+      applyZoom(false);
+    }
+  }
+});
+function endPointer(e) {
+  if (!zoom.pts.has(e.pointerId)) return;
+  zoom.pts.delete(e.pointerId);
+  if (zoom.pinch && zoom.pts.size < 2) {
+    zoom.pinch = null;
+    if (zoom.s < 1.05) resetZoom(true);
+    // Satu jari masih menempel → lanjut geser dari posisi sekarang.
+    const rest = [...zoom.pts.values()][0];
+    zoom.pan = rest ? { px: rest.x, py: rest.y, x: zoom.x, y: zoom.y } : null;
+    return;
+  }
+  if (zoom.pts.size || e.type === 'pointercancel') return;
+  zoom.pan = null;
+  const isTap = !zoom.moved && Date.now() - zoom.downAt < 300;
+  if (!isTap) return;
+  const now = Date.now();
+  const last = zoom.lastTap;
+  if (last && now - last.t < 320 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 40) {
+    // Ketuk-ganda: perbesar di titik ketukan, atau kembali ke ukuran awal.
+    zoom.lastTap = null;
+    if (zoom.s > 1) resetZoom(true);
+    else { zoomAt(ZOOM_DOUBLE, e.clientX, e.clientY); applyZoom(true); }
+    return;
+  }
+  zoom.lastTap = { t: now, x: e.clientX, y: e.clientY };
+  // Ketukan tunggal di luar gambar (saat tidak diperbesar) menutup penampil.
+  if (!zoom.downOnImg && zoom.s === 1) closeTop();
+}
+viewerEl.addEventListener('pointerup', endPointer);
+viewerEl.addEventListener('pointercancel', endPointer);
+$('#viewer .viewer-close').addEventListener('click', closeTop);
+
+function openViewer(url) {
+  resetZoom(false);
+  zoom.pts.clear();
+  zoom.pinch = null;
+  zoom.pan = null;
+  zoom.lastTap = null;
+  viewerImg.src = url;
+  viewerEl.hidden = false;
+  pushLayer('viewer');
+}
+function closeViewerNow() {
+  viewerEl.hidden = true;
+  resetZoom(false);
+  zoom.pts.clear();
+}
 
 $('#clearHistory').addEventListener('click', async () => {
   if (!confirm('Hapus semua riwayat aktivitas di aplikasi?')) return;
@@ -895,7 +1024,9 @@ function resumeAfterUnlock() {
 }
 function closeAllLayers() {
   $('#sheet').hidden = true;
-  $('#viewer').hidden = true;
+  closeViewerNow();
+  // Entri history lama dibiarkan; pcHandleBack hanya mundur selama masih ada lapisan tercatat.
+  layers.length = 0;
 }
 
 let hiddenAt = 0;
