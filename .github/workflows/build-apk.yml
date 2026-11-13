@@ -46,8 +46,9 @@ jobs:
       - name: Sync web assets ke Android
         run: npx cap sync android
 
-      # Jika secret keystore diisi, APK ditandatangani dengan kunci release yang sama dengan build lokal
-      # (sehingga bisa update di HP tanpa uninstall). Tanpa secret, dipakai tanda tangan debug.
+      # APK WAJIB ditandatangani kunci release yang tetap. Kunci debug di GitHub Actions dibuat acak tiap
+      # build, sehingga Android menolak update ("paket bentrok dengan paket yang sudah ada").
+      # Isi secret dengan: powershell -File scripts\set-github-secrets.ps1
       - name: Siapkan keystore release
         id: sign
         env:
@@ -67,7 +68,8 @@ jobs:
             } > keystore/keystore.properties
             echo "type=release" >> "$GITHUB_OUTPUT"
           else
-            echo "type=debug" >> "$GITHUB_OUTPUT"
+            echo "::error title=Keystore belum diisi::Secret KEYSTORE_BASE64 kosong. Tanpa kunci release yang tetap, APK tidak bisa di-update di HP. Jalankan scripts/set-github-secrets.ps1 lalu jalankan ulang workflow."
+            exit 1
           fi
 
       - name: Build APK
