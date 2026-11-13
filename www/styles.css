@@ -329,6 +329,8 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
   background: var(--surface); color: var(--text); font: 16px/1.35 var(--font); outline: none;
 }
 .composer textarea:focus { border-color: rgba(255,59,74,.55); }
+/* Placeholder selalu satu baris; kalau tidak muat, dipotong dengan "…" (bukan turun ke baris kedua yang terpotong). */
+.composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--faint); }
 .attach { cursor: pointer; }
 .send {
   width: 44px; height: 44px; flex: none; display: grid; place-items: center;

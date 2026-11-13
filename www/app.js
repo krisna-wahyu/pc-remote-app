@@ -377,7 +377,7 @@ async function loadInfo() {
   const dev = info.devmode;
   $('#devBanner').hidden = !dev;
   $('#devProject').textContent = dev ? dev.project : '';
-  $('#input').placeholder = dev ? `Prompt untuk Claude Code · ${dev.project}` : 'Ketik balasan…';
+  $('#input').placeholder = dev ? 'Prompt untuk Claude Code…' : 'Ketik balasan…'; // nama project sudah ada di banner DEV MODE
   updateHero();
 }
 
@@ -533,6 +533,18 @@ function autosize() {
 input.addEventListener('input', autosize);
 input.addEventListener('focus', () => { $('#main').classList.add('typing'); setTimeout(() => scrollBottom(true), 250); });
 input.addEventListener('blur', () => $('#main').classList.remove('typing'));
+// Enter di keyboard HP = baris baru (kirim lewat tombol merah).
+// Keyboard fisik: Ctrl/Cmd + Enter = kirim, Enter / Shift + Enter = baris baru.
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    $('#composer').requestSubmit();
+  }
+});
+// Keyboard muncul/hilang → tinggi layar berubah; tetap di pesan terbawah jika sebelumnya di bawah.
+window.addEventListener('resize', () => {
+  if (state.tab === 'feed' && atBottom) requestAnimationFrame(() => scrollBottom(false));
+});
 
 $('#fileInput').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
