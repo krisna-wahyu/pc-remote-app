@@ -299,7 +299,9 @@ function renderAll() {
       lastDay = dayKey(m.date);
       feed.appendChild(daySep(m.date));
     }
-    feed.appendChild(buildMessage(m));
+    const el = buildMessage(m);
+    el.classList.add('still'); // memuat ulang riwayat: tanpa animasi
+    feed.appendChild(el);
   }
   if (!list.length) {
     const e = document.createElement('p');
@@ -329,6 +331,9 @@ function applyMessage(m, live) {
   state.messages.set(m.id, m);
   const stick = atBottom || nearBottom();
   const el = buildMessage(m);
+  // Animasi muncul hanya untuk pesan yang benar-benar baru masuk, bukan saat pesan diedit
+  // (mis. "Claude bekerja" diperbarui tiap 3 detik) atau saat riwayat dimuat ulang.
+  if (!(live && isNew)) el.classList.add('still');
   if (existing) {
     existing.replaceWith(el);
   } else {
@@ -473,8 +478,10 @@ async function onEvent(ev, data) {
     applyMessage(data, true);
     refreshInfoSoon();
   } else if (ev === 'reset') {
+    // Riwayat dibersihkan (dari HP ini atau perangkat lain) → kosongkan daftar & cache foto di HP.
     state.messages.clear();
     renderAll();
+    clearPhoneCache();
   }
 }
 
@@ -506,6 +513,7 @@ async function tapButton(messageId, btn, kb) {
   if (btn.command === 'noop') return;
   kb.classList.add('busy');
   setTimeout(() => kb.classList.remove('busy'), 6000);
+  if (String(btn.command || '').startsWith('/dev_')) startClaudeMonitor(btn.text); // pilihan/izin/jawaban ke Claude
   try {
     await post('/api/tap', { messageId, command: btn.command, label: btn.text });
   } catch (e) {
@@ -514,6 +522,25 @@ async function tapButton(messageId, btn, kb) {
   }
 }
 
+// ---------- Notifikasi Claude saat aplikasi ditinggal (ClaudeMonitorService) ----------
+// Dimulai saat prompt/aksi dikirim di dev mode; layanan native memantau sendiri dan berhenti saat sesi selesai.
+const claudeMonitor = (() => {
+  try { return window.pcNative ? window.pcNative('ClaudeMonitor') : null; } catch { return null; }
+})();
+function startClaudeMonitor(prompt) {
+  const dev = state.info && state.info.devmode;
+  if (!claudeMonitor || !dev || !cfg.token) return;
+  Promise.resolve(claudeMonitor.call('start', {
+    server: cfg.server, token: cfg.token, since: state.seq,
+    project: dev.project || '', prompt: String(prompt || '').slice(0, 300),
+  })).catch(() => {});
+}
+// Notifikasi diketuk → buka tab Chat (setelah PIN jika aplikasi terkunci). Dipanggil MainActivity.java.
+window.pcOpenChat = function () {
+  if (!$('#main').hidden) switchTab('feed');
+  else state.pendingChat = true;
+};
+
 $('#composer').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = $('#input');
@@ -521,6 +548,7 @@ $('#composer').addEventListener('submit', async (e) => {
   if (!text) return;
   const btn = $('#sendBtn');
   btn.disabled = true;
+  startClaudeMonitor(text);
   try {
     await post('/api/send', { text });
     input.value = '';
@@ -560,6 +588,7 @@ $('#fileInput').addEventListener('change', async (e) => {
   if (!file) return;
   const caption = input.value.trim();
   toast(`⬆️ Mengirim ${file.name}…`);
+  startClaudeMonitor(caption || `📎 ${file.name}`);
   try {
     await api('/api/upload', {
       method: 'POST',
@@ -779,7 +808,6 @@ function closeMsgMenuNow() {
 function cancelPress() {
   clearTimeout(press.timer);
   press.timer = null;
-  press.bubble?.classList.remove('pressing');
   press.bubble = null;
 }
 feed.addEventListener('pointerdown', (e) => {
@@ -789,7 +817,6 @@ feed.addEventListener('pointerdown', (e) => {
   press.bubble = bubble;
   press.x = e.clientX;
   press.y = e.clientY;
-  bubble.classList.add('pressing');
   press.timer = setTimeout(() => {
     const b = press.bubble;
     cancelPress();
@@ -980,9 +1007,30 @@ function closeViewerNow() {
   zoom.pts.clear();
 }
 
+// Cache WebView di HP (foto/file yang pernah dimuat) + APK update lama. Data aplikasi tidak disentuh.
+let cacheClearing = null;
+function clearPhoneCache() {
+  if (cacheClearing) return cacheClearing; // event 'reset' & tombol bisa datang bersamaan
+  let p = null;
+  try { p = window.pcNative ? window.pcNative('AppCache') : null; } catch { p = null; }
+  if (!p) return Promise.resolve(null);
+  cacheClearing = Promise.resolve(p.call('clear'))
+    .catch(() => null)
+    .finally(() => setTimeout(() => { cacheClearing = null; }, 1500));
+  return cacheClearing;
+}
+const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
 $('#clearHistory').addEventListener('click', async () => {
-  if (!confirm('Hapus semua riwayat chat di aplikasi?')) return;
-  try { await post('/api/clear'); toast('Riwayat dibersihkan'); closeTop(); } catch (e) { toast(`❌ ${e.message}`); }
+  if (!confirm('Hapus semua riwayat chat? Pesan & foto di PC dan cache foto di HP ini ikut dihapus.')) return;
+  try {
+    await post('/api/clear');
+    const res = await clearPhoneCache();
+    toast(res && res.freedBytes > 0 ? `🧹 Riwayat & cache dibersihkan (${fmtBytes(res.freedBytes)})` : '🧹 Riwayat & cache dibersihkan');
+    closeTop();
+  } catch (e) {
+    toast(`❌ ${e.message}`);
+  }
 });
 $('#disconnect').addEventListener('click', () => { if (confirm('Putuskan dari PC ini?')) logout(); });
 
@@ -1160,6 +1208,7 @@ function showConnect(error) {
 
 // Hapus token & PIN dari HP (putus, token ditolak, atau PIN salah terlalu sering).
 function logout(reason) {
+  if (claudeMonitor) Promise.resolve(claudeMonitor.call('stop')).catch(() => {});
   state.stream?.abort();
   state.stream = null;
   cfg.token = '';
@@ -1280,6 +1329,7 @@ function resumeAfterUnlock() {
   loadInfo().catch(() => {});
   sync().catch(() => {});
   openStream();
+  if (state.pendingChat) { state.pendingChat = false; switchTab('feed'); }
 }
 function closeAllLayers() {
   $('#sheet').hidden = true;
@@ -1305,6 +1355,7 @@ $('#rotateToken').addEventListener('click', async () => {
     const r = await post('/api/token/rotate');
     const v = vault.read();
     cfg.token = r.token;
+    if (claudeMonitor) Promise.resolve(claudeMonitor.call('updateToken', { token: r.token })).catch(() => {});
     await sealToken(r.token, vault.key, unb64(v.salt));
     toast('🔑 Token diganti dan disimpan terenkripsi');
     closeTop();

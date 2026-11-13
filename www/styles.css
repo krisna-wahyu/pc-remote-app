@@ -265,6 +265,7 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
 .feed { flex: 1; padding: 14px 12px 18px; display: flex; flex-direction: column; gap: 10px; }
 .day { align-self: center; font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); padding: 3px 12px; border-radius: 999px; margin: 6px 0; }
 .msg { max-width: 88%; display: flex; flex-direction: column; gap: 6px; animation: rise .18s ease; }
+.msg.still { animation: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 .msg.bot { align-self: flex-start; }
 .msg.me { align-self: flex-end; align-items: flex-end; }
@@ -277,8 +278,8 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
   white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
 }
 /* Tekan lama = menu Salin (bukan seleksi teks bawaan Android, yang bentrok dengan menu). */
-.bubble { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: transform .15s ease, box-shadow .15s ease; }
-.bubble.pressing { transform: scale(.98); }
+/* Tanpa animasi saat disentuh: sentuhan untuk menggulir tidak boleh membuat pesan bergerak. */
+.bubble { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .bubble.selected { box-shadow: 0 0 0 2px var(--red), 0 6px 20px var(--red-glow); }
 .bot .bubble { background: var(--surface-2); border: 1px solid var(--line); border-top-left-radius: 6px; }
 .me .bubble { background: linear-gradient(135deg, var(--red-2), var(--red) 60%, #b30f1f); color: #fff; border-top-right-radius: 6px; box-shadow: 0 6px 16px rgba(225,29,46,.25); }

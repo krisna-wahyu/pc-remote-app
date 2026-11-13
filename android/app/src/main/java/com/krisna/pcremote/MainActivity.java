@@ -1,6 +1,9 @@
 package com.krisna.pcremote;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 
@@ -16,8 +19,11 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(AppUpdatePlugin.class);
         registerPlugin(SystemBarsPlugin.class);
+        registerPlugin(AppCachePlugin.class);
+        registerPlugin(ClaudeMonitorPlugin.class);
         super.onCreate(savedInstanceState);
         fitWebViewAboveKeyboard();
+        if (getIntent() != null && getIntent().getBooleanExtra(ClaudeMonitorService.EXTRA_OPEN_CHAT, false)) openChat(0);
 
         // Tombol Back Android: tanya dulu ke aplikasi web (www/app.js → window.pcHandleBack) apakah ada
         // lapisan yang bisa ditutup (foto, Pengaturan, tab Aktivitas) — seperti navigate(-1).
@@ -44,6 +50,25 @@ public class MainActivity extends BridgeActivity {
                 setEnabled(true);
             }
         });
+    }
+
+    // Notifikasi Claude diketuk saat aplikasi masih hidup di latar belakang.
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && intent.getBooleanExtra(ClaudeMonitorService.EXTRA_OPEN_CHAT, false)) openChat(0);
+    }
+
+    /** Buka tab Chat (www/app.js → window.pcOpenChat). Saat baru dibuka JS belum siap → coba lagi sebentar. */
+    private void openChat(int attempt) {
+        WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+        if (webView == null || attempt > 20) return;
+        webView.evaluateJavascript(
+            "(function(){try{return !!(window.pcOpenChat&&(window.pcOpenChat(),true));}catch(e){return false;}})()",
+            result -> {
+                if (!"true".equals(result)) new Handler(Looper.getMainLooper()).postDelayed(() -> openChat(attempt + 1), 500);
+            }
+        );
     }
 
     /**

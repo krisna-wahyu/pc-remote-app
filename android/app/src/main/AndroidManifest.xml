@@ -37,6 +37,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Notifikasi progres Claude saat aplikasi ditinggal (hanya selama sesi dev mode berjalan) -->
+        <service
+            android:name=".ClaudeMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
     <!-- Permissions -->
@@ -44,4 +50,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Fitur "Update sekarang" di Pengaturan: memasang APK baru dari GitHub Releases -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Notifikasi Claude: tampilkan notifikasi + layanan latar depan selama sesi dev mode -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 </manifest>
