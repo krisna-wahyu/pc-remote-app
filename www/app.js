@@ -590,6 +590,144 @@ function toast(text) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 2800);
 }
 
+// ---------- Tema (lihat theme.js) ----------
+function renderThemePicker() {
+  const pref = window.pcTheme ? window.pcTheme.get() : 'auto';
+  $$('#themePicker button').forEach((b) => {
+    const on = b.dataset.themePref === pref;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+}
+$$('#themePicker button').forEach((b) => b.addEventListener('click', () => {
+  window.pcTheme?.set(b.dataset.themePref);
+  renderThemePicker();
+}));
+renderThemePicker();
+
+// ---------- Update aplikasi (GitHub Releases) ----------
+// APK dibangun GitHub Actions dan dirilis sebagai vX.Y.N; plugin native AppUpdate mengunduh & membuka installer.
+const UPDATE_REPO = 'krisna-wahyu/pc-remote-app';
+const UPDATE_CHECK_EVERY_MS = 6 * 60 * 60 * 1000; // cek otomatis maksimal tiap 6 jam (batas API GitHub)
+const AppUpdate = window.Capacitor?.isNativePlatform?.() ? window.Capacitor.registerPlugin('AppUpdate') : null;
+const upd = { current: '', latest: null, checking: false, installing: false, error: '' };
+
+function cmpVersion(a, b) {
+  const pa = String(a).replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+const hasUpdate = () => !!(upd.latest && upd.current && cmpVersion(upd.latest.version, upd.current) > 0);
+
+function renderUpdate(percent) {
+  const avail = hasUpdate();
+  $('#appVersion').textContent = upd.current ? `v${upd.current}` : (AppUpdate ? '—' : 'versi web');
+  $('#updateBadge').hidden = !avail;
+  $('#updateDot').hidden = !avail;
+  $('#updateCard').classList.toggle('has-update', avail);
+  const btn = $('#updateBtn');
+  const text = $('#updateText');
+  const bar = $('#updateProgress');
+  btn.classList.toggle('btn-primary', avail);
+  btn.disabled = upd.checking || upd.installing || !AppUpdate;
+  bar.hidden = !upd.installing;
+  if (upd.installing) {
+    $('#updateBar').style.width = `${percent || 0}%`;
+    text.textContent = percent >= 100 ? 'Membuka installer…' : `Mengunduh v${upd.latest.version}… ${percent || 0}%`;
+    btn.textContent = 'Mengunduh…';
+  } else if (upd.checking) {
+    text.textContent = 'Mengecek versi terbaru…';
+    btn.textContent = 'Mengecek…';
+  } else if (!AppUpdate) {
+    text.textContent = 'Update hanya tersedia di aplikasi Android.';
+    btn.textContent = 'Cek update';
+  } else if (upd.error) {
+    text.textContent = upd.error;
+    btn.textContent = avail ? `Update sekarang (v${upd.latest.version})` : 'Cek update';
+  } else if (avail) {
+    const date = upd.latest.date ? ` · ${new Date(upd.latest.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+    text.textContent = `Versi baru v${upd.latest.version} tersedia${date}.`;
+    btn.textContent = `Update sekarang (v${upd.latest.version})`;
+  } else if (upd.latest) {
+    text.textContent = 'Aplikasi sudah versi terbaru.';
+    btn.textContent = 'Cek update';
+  } else {
+    text.textContent = 'Belum dicek.';
+    btn.textContent = 'Cek update';
+  }
+}
+
+async function checkUpdate({ manual = false } = {}) {
+  if (!AppUpdate || upd.checking || upd.installing) return;
+  upd.checking = true;
+  upd.error = '';
+  renderUpdate();
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 12000);
+    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json' }, signal: ctl.signal, cache: 'no-store',
+    }).finally(() => clearTimeout(timer));
+    if (res.status === 404) throw new Error('Belum ada rilis di GitHub.');
+    if (res.status === 403 || res.status === 429) throw new Error('Batas cek GitHub tercapai, coba lagi nanti.');
+    if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
+    const rel = await res.json();
+    const asset = (rel.assets || []).find((a) => a.name === 'PC-Remote.apk') || (rel.assets || []).find((a) => /\.apk$/i.test(a.name));
+    if (!asset) throw new Error('Rilis terbaru tidak berisi APK.');
+    upd.latest = { version: String(rel.tag_name).replace(/^v/i, ''), url: asset.browser_download_url, date: rel.published_at };
+    local.set('updateCheckedAt', String(Date.now()));
+    local.set('updateLatest', JSON.stringify(upd.latest));
+    if (manual && !hasUpdate()) toast('✅ Aplikasi sudah versi terbaru');
+    else if (!manual && hasUpdate()) toast(`⬆️ Update v${upd.latest.version} tersedia di Pengaturan`);
+  } catch (e) {
+    upd.error = e.name === 'AbortError' ? 'Gagal mengecek: waktu habis.' : `Gagal mengecek: ${e.message}`;
+  } finally {
+    upd.checking = false;
+    renderUpdate();
+  }
+}
+
+async function installUpdate() {
+  if (!hasUpdate() || upd.installing) return;
+  const { allowed } = await AppUpdate.canInstall();
+  if (!allowed) {
+    upd.error = 'Izinkan "Pasang aplikasi tak dikenal" untuk PC Remote, lalu kembali dan tekan Update sekarang lagi.';
+    renderUpdate();
+    await AppUpdate.openInstallSettings();
+    return;
+  }
+  upd.installing = true;
+  upd.error = '';
+  renderUpdate(0);
+  const sub = await AppUpdate.addListener('progress', ({ percent }) => renderUpdate(percent));
+  try {
+    await AppUpdate.downloadAndInstall({ url: upd.latest.url });
+  } catch (e) {
+    upd.error = e.message || 'Gagal update.';
+  } finally {
+    sub.remove();
+    upd.installing = false;
+    renderUpdate();
+  }
+}
+
+$('#updateBtn').addEventListener('click', () => (hasUpdate() ? installUpdate() : checkUpdate({ manual: true })));
+
+async function initUpdate() {
+  if (AppUpdate) {
+    try { upd.current = (await AppUpdate.getInfo()).versionName || ''; } catch { /* abaikan */ }
+    try { upd.latest = JSON.parse(local.get('updateLatest') || 'null'); } catch { upd.latest = null; }
+  }
+  renderUpdate();
+  const last = Number(local.get('updateCheckedAt')) || 0;
+  if (AppUpdate && Date.now() - last > UPDATE_CHECK_EVERY_MS) checkUpdate();
+}
+initUpdate();
+
 // ---------- Sambung / kunci PIN / putus ----------
 function showOnly(id) {
   for (const s of ['connect', 'lock', 'main']) $(`#${s}`).hidden = s !== id;

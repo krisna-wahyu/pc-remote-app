@@ -9,6 +9,7 @@
   <meta name="referrer" content="no-referrer">
   <title>PC Remote</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="theme.js"></script>
 </head>
 <body>
   <!-- ============ Layar sambung ============ -->
@@ -72,6 +73,7 @@
       </div>
       <span id="conn" class="conn conn-wait"><i></i><span>Menyambung…</span></span>
       <button class="icon-btn" id="openSettings" aria-label="Pengaturan">
+        <i id="updateDot" class="update-dot" hidden></i>
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>
     </header>
@@ -141,6 +143,26 @@
         <dt>PC</dt><dd id="setHost">—</dd>
         <dt>Status</dt><dd id="setConn">—</dd>
       </dl>
+      <div class="theme-row">
+        <span>Tema</span>
+        <div class="segmented" id="themePicker" role="radiogroup" aria-label="Tema">
+          <button type="button" data-theme-pref="auto" role="radio">Otomatis</button>
+          <button type="button" data-theme-pref="light" role="radio">Terang</button>
+          <button type="button" data-theme-pref="dark" role="radio">Gelap</button>
+        </div>
+      </div>
+      <div class="update-card" id="updateCard">
+        <div class="update-head">
+          <div>
+            <span class="update-label">Versi aplikasi</span>
+            <strong id="appVersion">—</strong>
+          </div>
+          <span id="updateBadge" class="update-badge" hidden>Baru</span>
+        </div>
+        <p id="updateText" class="update-text">Belum dicek.</p>
+        <div id="updateProgress" class="update-progress" hidden><i id="updateBar"></i></div>
+        <button class="btn btn-block" id="updateBtn" type="button">Cek update</button>
+      </div>
       <button class="btn btn-block" id="lockNow">Kunci sekarang</button>
       <button class="btn btn-block" id="rotateToken">Ganti token (putuskan perangkat lain)</button>
       <button class="btn btn-block" id="clearHistory">Bersihkan riwayat aktivitas</button>
