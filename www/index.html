@@ -72,6 +72,9 @@
         <span id="hostName">—</span>
       </div>
       <span id="conn" class="conn conn-wait"><i></i><span>Menyambung…</span></span>
+      <button class="icon-btn" id="openSearch" type="button" aria-label="Cari pesan" hidden>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
       <button class="icon-btn" id="openSettings" aria-label="Pengaturan">
         <i id="updateDot" class="update-dot" hidden></i>
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -85,6 +88,22 @@
       </div>
       <button class="btn btn-ghost-light btn-sm" data-command="/dev_mode_exit">Keluar</button>
     </div>
+
+    <!-- Cari di Aktivitas -->
+    <form id="searchBar" class="search-bar" role="search" hidden>
+      <svg class="search-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="searchInput" type="search" placeholder="Cari di chat…" enterkeyhint="search" autocomplete="off" spellcheck="false">
+      <span id="searchCount" class="search-count"></span>
+      <button class="icon-btn" id="searchPrev" type="button" aria-label="Hasil lebih lama">
+        <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>
+      </button>
+      <button class="icon-btn" id="searchNext" type="button" aria-label="Hasil lebih baru">
+        <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <button class="icon-btn" id="searchClose" type="button" aria-label="Tutup pencarian">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </form>
 
     <!-- Beranda -->
     <div id="tabHome" class="view">
@@ -105,7 +124,10 @@
     <!-- Aktivitas -->
     <div id="tabFeed" class="view" hidden>
       <div id="feed" class="feed" aria-live="polite"></div>
-      <button id="newPill" class="new-pill" hidden>Pesan baru ↓</button>
+      <button id="newPill" class="to-bottom" type="button" aria-label="Ke pesan terbaru" hidden>
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+        <i class="to-bottom-dot"></i>
+      </button>
     </div>
 
     <form id="composer" class="composer" hidden>
@@ -126,7 +148,7 @@
       </button>
       <button class="tab" data-tab="feed">
         <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>Aktivitas</span>
+        <span>Chat</span>
         <b id="unread" class="badge" hidden>0</b>
       </button>
     </nav>
@@ -165,7 +187,7 @@
       </div>
       <button class="btn btn-block" id="lockNow">Kunci sekarang</button>
       <button class="btn btn-block" id="rotateToken">Ganti token (putuskan perangkat lain)</button>
-      <button class="btn btn-block" id="clearHistory">Bersihkan riwayat aktivitas</button>
+      <button class="btn btn-block" id="clearHistory">Bersihkan riwayat chat</button>
       <button class="btn btn-danger btn-block" id="disconnect">Putuskan &amp; ganti server</button>
       <button class="btn btn-ghost btn-block" data-close>Tutup</button>
     </div>
@@ -177,6 +199,21 @@
     <button class="icon-btn viewer-close" data-close aria-label="Tutup">
       <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
+  </div>
+
+  <!-- Menu tekan-lama pada pesan (seperti Telegram) -->
+  <div id="msgMenu" class="msg-menu" hidden>
+    <div class="msg-menu-backdrop"></div>
+    <div class="msg-menu-panel" role="menu">
+      <button type="button" role="menuitem" data-action="copy">
+        <svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+        <span>Salin</span>
+      </button>
+      <button type="button" role="menuitem" data-action="copy-code">
+        <svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>
+        <span>Salin kode</span>
+      </button>
+    </div>
   </div>
 
   <div id="toast" class="toast" hidden></div>

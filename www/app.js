@@ -262,13 +262,20 @@ function scrollBottom(smooth) {
   atBottom = true;
   autoScrollUntil = smooth ? Date.now() + 800 : 0;
   feedView.scrollTo({ top: feedView.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-  $('#newPill').hidden = true;
+  setToBottom(false);
+}
+// Tombol bulat ↓: tampil selama chat tidak di bawah; titik merah jika ada pesan baru yang belum terlihat.
+function setToBottom(show, hasNew) {
+  const b = $('#newPill');
+  b.hidden = !show;
+  if (!show) b.classList.remove('has-new');
+  else if (hasNew) b.classList.add('has-new');
 }
 feedView.addEventListener('scroll', () => {
   const bottom = nearBottom();
   if (!bottom && Date.now() < autoScrollUntil) return;
   atBottom = bottom;
-  if (bottom) $('#newPill').hidden = true;
+  setToBottom(!bottom);
 }, { passive: true });
 // Pengguna menyentuh / menggulir sendiri → hentikan anggapan "sedang auto-scroll".
 for (const ev of ['touchstart', 'wheel']) feedView.addEventListener(ev, () => { autoScrollUntil = 0; }, { passive: true });
@@ -298,7 +305,7 @@ function renderAll() {
     const e = document.createElement('p');
     e.className = 'empty';
     e.style.marginTop = '30vh';
-    e.textContent = 'Belum ada aktivitas. Pilih menu di Beranda.';
+    e.textContent = 'Belum ada chat. Pilih menu di Beranda.';
     feed.appendChild(e);
   }
   hideOldMenus();
@@ -333,7 +340,8 @@ function applyMessage(m, live) {
   }
   if (isMainMenu(m)) hideOldMenus();
   if (stick) scrollBottom(true);
-  else if (isNew && state.tab === 'feed') $('#newPill').hidden = false;
+  else if (isNew && state.tab === 'feed') setToBottom(true, true);
+  if (search.open) refreshSearchSoon(); // pesan baru/berubah ikut dicari
 
   if (live && isNew && m.from !== 'me' && !isMainMenu(m) && !/^⏳/.test(m.text || '')) {
     if (state.tab !== 'feed') {
@@ -578,14 +586,251 @@ window.addEventListener('popstate', () => {
   const top = layers.pop();
   if (top === 'viewer') closeViewerNow();
   else if (top === 'sheet') $('#sheet').hidden = true;
+  else if (top === 'msgmenu') closeMsgMenuNow();
   else if (top === 'feed') showTab('home');
 });
+
+// ---------- Cari di Aktivitas ----------
+// Kata yang cocok dibungkus <mark class="hl"> di dalam bubble; ▲ = hasil lebih lama, ▼ = lebih baru.
+// Tidak dicatat di history: Back menutupnya lewat pcHandleBack.
+const search = { open: false, hits: [], idx: -1, timer: null };
+const searchInput = $('#searchInput');
+
+function clearHighlights() {
+  feed.querySelectorAll('mark.hl').forEach((mk) => {
+    const parent = mk.parentNode;
+    mk.replaceWith(document.createTextNode(mk.textContent));
+    parent.normalize();
+  });
+}
+function highlightIn(bubble, re) {
+  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement.closest('.time, button, mark') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    re.lastIndex = 0;
+    if (!re.test(text)) continue;
+    re.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let match;
+    while ((match = re.exec(text))) {
+      if (match.index > last) frag.appendChild(document.createTextNode(text.slice(last, match.index)));
+      const mk = document.createElement('mark');
+      mk.className = 'hl';
+      mk.textContent = match[0];
+      frag.appendChild(mk);
+      last = match.index + match[0].length;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    node.replaceWith(frag);
+  }
+}
+function runSearch({ keep = false } = {}) {
+  const prevIdx = search.idx;
+  const prevCount = search.hits.length;
+  clearHighlights();
+  const q = searchInput.value.trim();
+  search.hits = [];
+  if (q) {
+    const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    feed.querySelectorAll('.msg .bubble').forEach((b) => highlightIn(b, re));
+    search.hits = [...feed.querySelectorAll('mark.hl')];
+  }
+  // Mulai dari hasil terbaru (paling bawah); saat menyegarkan, pertahankan posisi yang sedang dilihat.
+  if (!search.hits.length) search.idx = -1;
+  else if (keep && prevIdx >= 0 && prevCount) search.idx = Math.min(prevIdx, search.hits.length - 1);
+  else search.idx = search.hits.length - 1;
+  showHit(!keep);
+}
+function showHit(scroll) {
+  search.hits.forEach((mk, i) => mk.classList.toggle('current', i === search.idx));
+  const n = search.hits.length;
+  const q = searchInput.value.trim();
+  $('#searchCount').textContent = !q ? '' : n ? `${search.idx + 1}/${n}` : 'Tidak ada';
+  $('#searchPrev').disabled = search.idx <= 0;
+  $('#searchNext').disabled = search.idx < 0 || search.idx >= n - 1;
+  if (scroll && search.idx >= 0) search.hits[search.idx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+function stepSearch(delta) {
+  if (!search.hits.length) return;
+  search.idx = Math.min(search.hits.length - 1, Math.max(0, search.idx + delta));
+  showHit(true);
+}
+function refreshSearchSoon() {
+  clearTimeout(search.timer);
+  search.timer = setTimeout(() => runSearch({ keep: true }), 250);
+}
+function openSearch() {
+  if (search.open) { searchInput.focus(); return; }
+  search.open = true;
+  $('#searchBar').hidden = false;
+  searchInput.value = '';
+  showHit(false);
+  searchInput.focus();
+}
+function closeSearch() {
+  if (!search.open) return;
+  search.open = false;
+  clearTimeout(search.timer);
+  clearHighlights();
+  search.hits = [];
+  search.idx = -1;
+  searchInput.blur();
+  $('#searchBar').hidden = true;
+}
+$('#openSearch').addEventListener('click', openSearch);
+$('#searchClose').addEventListener('click', closeSearch);
+$('#searchPrev').addEventListener('click', () => stepSearch(-1));
+$('#searchNext').addEventListener('click', () => stepSearch(1));
+searchInput.addEventListener('input', () => {
+  clearTimeout(search.timer);
+  search.timer = setTimeout(() => runSearch(), 200);
+});
+// Enter / tombol cari di keyboard = hasil berikutnya yang lebih lama (seperti Telegram).
+$('#searchBar').addEventListener('submit', (e) => {
+  e.preventDefault();
+  clearTimeout(search.timer);
+  if (!search.hits.length) runSearch();
+  else stepSearch(-1);
+});
+
+// ---------- Tekan lama pesan → menu Salin (seperti Telegram) ----------
+const LONG_PRESS_MS = 450;
+const msgMenu = $('#msgMenu');
+const press = { timer: null, x: 0, y: 0, bubble: null, firedAt: 0 };
+let menuTarget = null; // { bubble, m }
+
+// Teks pesan untuk disalin: baris baru dipertahankan; tanpa jam & tombol.
+function messageText(m) {
+  const parts = [];
+  if (m.caption) parts.push(m.caption);
+  if (m.text) {
+    if (m.from === 'me') parts.push(m.text);
+    else {
+      const doc = new DOMParser().parseFromString(`<body>${m.text}</body>`, 'text/html');
+      doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+      parts.push(doc.body.textContent || '');
+    }
+  }
+  return parts.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+function messageCode(bubble) {
+  return [...bubble.querySelectorAll('pre')].map((p) => p.textContent.replace(/\n+$/, '')).join('\n\n');
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* coba cara lama */ }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+function openMsgMenu(bubble) {
+  const id = Number(bubble.closest('.msg')?.dataset.id);
+  const m = state.messages.get(id);
+  if (!m || !msgMenu.hidden) return;
+  const text = messageText(m);
+  const code = messageCode(bubble);
+  if (!text && !code) return; // mis. foto tanpa keterangan: tidak ada yang bisa disalin
+  menuTarget = { bubble, text, code };
+  msgMenu.querySelector('[data-action="copy"]').hidden = !text;
+  msgMenu.querySelector('[data-action="copy-code"]').hidden = !code;
+  bubble.classList.add('selected');
+  msgMenu.hidden = false;
+
+  // Posisikan menu di bawah pesan (atau di atasnya jika tidak muat), tidak keluar layar.
+  const panel = msgMenu.querySelector('.msg-menu-panel');
+  const r = bubble.getBoundingClientRect();
+  const pw = panel.offsetWidth;
+  const ph = panel.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const left = Math.min(Math.max(12, bubble.closest('.me') ? r.right - pw : r.left), vw - pw - 12);
+  let top = r.bottom + 8;
+  if (top + ph > vh - 12) top = r.top - ph - 8;
+  top = Math.min(Math.max(12, top), vh - ph - 12);
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  if (navigator.vibrate) navigator.vibrate(15);
+  pushLayer('msgmenu');
+}
+function closeMsgMenuNow() {
+  msgMenu.hidden = true;
+  menuTarget?.bubble.classList.remove('selected');
+  menuTarget = null;
+}
+
+function cancelPress() {
+  clearTimeout(press.timer);
+  press.timer = null;
+  press.bubble?.classList.remove('pressing');
+  press.bubble = null;
+}
+feed.addEventListener('pointerdown', (e) => {
+  const bubble = e.target.closest('.bubble');
+  if (!bubble || bubble.classList.contains('menu-card') || e.target.closest('button, a')) return;
+  cancelPress();
+  press.bubble = bubble;
+  press.x = e.clientX;
+  press.y = e.clientY;
+  bubble.classList.add('pressing');
+  press.timer = setTimeout(() => {
+    const b = press.bubble;
+    cancelPress();
+    press.firedAt = Date.now();
+    if (b) openMsgMenu(b);
+  }, LONG_PRESS_MS);
+});
+feed.addEventListener('pointermove', (e) => {
+  if (press.timer && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) cancelPress();
+});
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) feed.addEventListener(ev, cancelPress);
+feedView.addEventListener('scroll', cancelPress, { passive: true });
+// Menu konteks bawaan (tekan lama Android / klik kanan) diganti menu kita.
+feed.addEventListener('contextmenu', (e) => {
+  const bubble = e.target.closest('.bubble');
+  if (!bubble) return;
+  e.preventDefault();
+  if (Date.now() - press.firedAt > 600) { cancelPress(); openMsgMenu(bubble); }
+});
+// Klik yang menyusul tekan-lama (mis. pada foto) tidak boleh membuka foto.
+feed.addEventListener('click', (e) => {
+  if (Date.now() - press.firedAt < 600) { e.stopPropagation(); e.preventDefault(); }
+}, true);
+
+msgMenu.querySelector('.msg-menu-backdrop').addEventListener('click', closeTop);
+msgMenu.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener('click', async () => {
+  if (!menuTarget) return;
+  const text = btn.dataset.action === 'copy-code' ? menuTarget.code : menuTarget.text;
+  const ok = await copyText(text);
+  closeTop();
+  toast(ok ? (btn.dataset.action === 'copy-code' ? '📋 Kode disalin' : '📋 Teks disalin') : '❌ Gagal menyalin');
+}));
 
 // Dipanggil MainActivity.java saat tombol Back Android ditekan (seperti navigate(-1)).
 // true  → ada lapisan yang ditutup, aplikasi tetap terbuka;
 // false → tidak ada yang bisa ditutup, Android menjalankan Back bawaan (keluar ke layar utama HP).
 window.pcHandleBack = function () {
   if ($('#main').hidden) return false;
+  const top = layers[layers.length - 1];
+  if (top && top !== 'feed') { closeTop(); return true; } // foto, Pengaturan, menu Salin
+  if (search.open) { closeSearch(); return true; }
   if (layers.length) { closeTop(); return true; }
   if (state.tab === 'feed') { showTab('home'); return true; } // mis. setelah buka kunci, catatan lapisan kosong
   return false;
@@ -596,6 +841,8 @@ function showTab(tab) {
   $('#tabHome').hidden = tab !== 'home';
   $('#tabFeed').hidden = tab !== 'feed';
   $('#composer').hidden = tab !== 'feed';
+  $('#openSearch').hidden = tab !== 'feed';
+  if (tab !== 'feed' && search.open) closeSearch();
   $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   if (tab === 'feed') {
     state.unread = 0;
@@ -734,7 +981,7 @@ function closeViewerNow() {
 }
 
 $('#clearHistory').addEventListener('click', async () => {
-  if (!confirm('Hapus semua riwayat aktivitas di aplikasi?')) return;
+  if (!confirm('Hapus semua riwayat chat di aplikasi?')) return;
   try { await post('/api/clear'); toast('Riwayat dibersihkan'); closeTop(); } catch (e) { toast(`❌ ${e.message}`); }
 });
 $('#disconnect').addEventListener('click', () => { if (confirm('Putuskan dari PC ini?')) logout(); });
@@ -1037,6 +1284,8 @@ function resumeAfterUnlock() {
 function closeAllLayers() {
   $('#sheet').hidden = true;
   closeViewerNow();
+  closeMsgMenuNow();
+  closeSearch();
   // Entri history lama dibiarkan; pcHandleBack hanya mundur selama masih ada lapisan tercatat.
   layers.length = 0;
 }

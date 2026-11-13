@@ -15,7 +15,7 @@ Isinya hanya tampilan: semua logika (Open Project, Dev Mode, DB App, WordPress, 
 ## Cara kerja
 
 - **Beranda**: kartu menu = menu utama bot.
-- **Aktivitas**: seperti chat Telegram. Balasan bot, tombol pilihan, screenshot, dan laporan Claude Code
+- **Chat**: seperti chat Telegram. Balasan bot, tombol pilihan, screenshot, dan laporan Claude Code
   muncul langsung (Server-Sent Events). Saat dev mode aktif, ketikan dikirim sebagai prompt ke Claude Code,
   dan foto/file ikut diteruskan.
 - HP terhubung ke PC lewat **Tailscale** (dari mana saja) atau WiFi rumah. Server hanya menerima jaringan

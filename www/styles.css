@@ -276,6 +276,10 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
   position: relative; padding: 10px 14px 8px; border-radius: 18px;
   white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere;
 }
+/* Tekan lama = menu Salin (bukan seleksi teks bawaan Android, yang bentrok dengan menu). */
+.bubble { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; transition: transform .15s ease, box-shadow .15s ease; }
+.bubble.pressing { transform: scale(.98); }
+.bubble.selected { box-shadow: 0 0 0 2px var(--red), 0 6px 20px var(--red-glow); }
 .bot .bubble { background: var(--surface-2); border: 1px solid var(--line); border-top-left-radius: 6px; }
 .me .bubble { background: linear-gradient(135deg, var(--red-2), var(--red) 60%, #b30f1f); color: #fff; border-top-right-radius: 6px; box-shadow: 0 6px 16px rgba(225,29,46,.25); }
 .bubble .time { display: block; margin-top: 4px; font-size: 11px; color: var(--faint); text-align: right; }
@@ -310,12 +314,54 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
 .menu-card { display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; }
 .menu-card span { flex: 1; color: var(--muted); font-size: 13px; }
 
-.new-pill {
-  position: sticky; bottom: 12px; align-self: center; margin-bottom: 8px;
-  padding: 8px 16px; border-radius: 999px; border: 0;
-  background: var(--red); color: #fff; font-weight: 700; font-size: 13px;
-  box-shadow: 0 8px 20px var(--red-glow);
+/* Tombol bulat "ke pesan terbaru": muncul saat chat digulir ke atas; titik merah = ada pesan baru. */
+.to-bottom {
+  position: sticky; bottom: 14px; align-self: flex-end; margin: 0 14px 10px 0;
+  width: 46px; height: 46px; flex: none; display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid var(--line); cursor: pointer;
+  background: var(--toast-bg); color: var(--text);
+  box-shadow: 0 8px 22px var(--shadow);
+  animation: pop .16s ease-out;
 }
+.to-bottom:active { transform: scale(.94); }
+.to-bottom svg { width: 22px; height: 22px; stroke-width: 2.2; }
+.to-bottom-dot {
+  position: absolute; top: 1px; right: 1px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--red); box-shadow: 0 0 0 2px var(--bg), 0 0 10px var(--red-glow);
+  display: none;
+}
+.to-bottom.has-new { color: var(--red-2); border-color: rgba(255,59,74,.45); }
+.to-bottom.has-new .to-bottom-dot { display: block; }
+
+/* Layar sempit: badge status cukup titik warna, supaya nama PC & tombol cari/pengaturan tetap muat. */
+@media (max-width: 400px) {
+  .conn { padding: 8px; }
+  .conn > span { display: none; }
+  .topbar { gap: 8px; padding-right: 8px; }
+}
+
+/* ---------- Cari di Aktivitas ---------- */
+.search-bar {
+  display: flex; align-items: center; gap: 2px;
+  margin: 8px 10px 0; padding: 4px 4px 4px 12px;
+  border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
+  animation: fade .15s ease;
+}
+.search-bar:focus-within { border-color: rgba(255,59,74,.55); }
+.search-ic { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.search-bar input {
+  flex: 1; min-width: 0; height: 40px; padding: 0 8px; border: 0; outline: none;
+  background: transparent; color: var(--text); font: 16px var(--font);
+}
+.search-bar input::-webkit-search-cancel-button { display: none; }
+.search-count { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; padding: 0 4px; }
+.search-bar .icon-btn { width: 36px; height: 36px; }
+.search-bar .icon-btn:disabled { opacity: .35; }
+.search-bar .icon-btn svg { width: 20px; height: 20px; }
+mark.hl { background: rgba(245,165,36,.35); color: inherit; border-radius: 3px; padding: 0 1px; }
+mark.hl.current { background: var(--warn); color: #111; box-shadow: 0 0 0 2px rgba(245,165,36,.4); }
+.me .bubble mark.hl { background: rgba(255,255,255,.3); }
+.me .bubble mark.hl.current { background: #fff; color: var(--red); }
 
 .composer {
   display: flex; align-items: flex-end; gap: 6px;
@@ -367,6 +413,26 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
   background: var(--red); color: #fff; font-size: 11px; line-height: 18px; text-align: center;
 }
+
+/* ---------- Menu tekan-lama pesan ---------- */
+.msg-menu { position: fixed; inset: 0; z-index: 24; }
+.msg-menu-backdrop { position: absolute; inset: 0; background: transparent; }
+.msg-menu-panel {
+  position: absolute; min-width: 180px; padding: 6px;
+  display: grid; gap: 2px;
+  background: var(--toast-bg); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 14px 34px var(--shadow);
+  animation: pop .14s ease-out; transform-origin: top left;
+}
+.msg-menu-panel button {
+  display: flex; align-items: center; gap: 12px;
+  min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--text); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.msg-menu-panel button:active { background: var(--surface-2); }
+.msg-menu-panel button svg { width: 20px; height: 20px; color: var(--red-2); }
+.msg-menu-panel button[hidden] { display: none; }
+@keyframes pop { from { opacity: 0; transform: scale(.92); } }
 
 /* ---------- Sheet, viewer, toast ---------- */
 .sheet { position: fixed; inset: 0; z-index: 20; }
