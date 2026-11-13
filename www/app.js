@@ -43,6 +43,7 @@ async function openVault(pin) {
   return new TextDecoder().decode(plain);
 }
 async function createVault(pin, token) {
+  disableBio(); // PIN baru → PIN lama yang tersimpan untuk sidik jari tidak berlaku
   const salt = crypto.getRandomValues(new Uint8Array(16));
   vault.key = await pinKey(pin, salt);
   await sealToken(token, vault.key, salt);
@@ -854,6 +855,7 @@ msgMenu.querySelectorAll('[data-action]').forEach((btn) => btn.addEventListener(
 // true  → ada lapisan yang ditutup, aplikasi tetap terbuka;
 // false → tidak ada yang bisa ditutup, Android menjalankan Back bawaan (keluar ke layar utama HP).
 window.pcHandleBack = function () {
+  if (!$('#lock').hidden && pin.mode === 'bio') { cancelBioSetup(); return true; }
   if ($('#main').hidden) return false;
   const top = layers[layers.length - 1];
   if (top && top !== 'feed') { closeTop(); return true; } // foto, Pengaturan, menu Salin
@@ -1208,6 +1210,7 @@ function showConnect(error) {
 
 // Hapus token & PIN dari HP (putus, token ditolak, atau PIN salah terlalu sering).
 function logout(reason) {
+  disableBio();
   if (claudeMonitor) Promise.resolve(claudeMonitor.call('stop')).catch(() => {});
   state.stream?.abort();
   state.stream = null;
@@ -1224,6 +1227,85 @@ function logout(reason) {
 
 // --- Layar PIN: mode 'unlock' | 'create' | 'confirm' ---
 const pin = { mode: 'unlock', value: '', first: '', pendingToken: '', busy: false };
+
+// ---------- Sidik jari (BiometricPlugin) ----------
+// PIN tetap kunci utama. Sidik jari hanya membuka PIN yang disimpan terenkripsi di Android Keystore,
+// lalu PIN itu dipakai lewat jalur buka-kunci biasa.
+const bio = {
+  plugin: (() => { try { return window.pcNative ? window.pcNative('Biometric') : null; } catch { return null; } })(),
+  status: 'unavailable', // available | none_enrolled | unavailable
+  enabled: false,
+  prompting: false,
+};
+async function refreshBio() {
+  if (!bio.plugin) return;
+  try {
+    const r = await bio.plugin.call('status');
+    bio.status = r.status || 'unavailable';
+    bio.enabled = !!r.enabled && bio.status === 'available';
+  } catch { bio.status = 'unavailable'; bio.enabled = false; }
+  renderBio();
+  // Layar kunci sudah tampil sebelum status diketahui (saat aplikasi baru dibuka) → tawarkan sidik jari sekarang.
+  if (pin.mode === 'unlock' && !$('#lock').hidden) {
+    $('#lockBio').hidden = !bio.enabled;
+    if (bio.enabled) unlockWithBio();
+  }
+}
+function renderBio() {
+  const row = $('#bioRow');
+  row.hidden = !bio.plugin || bio.status === 'unavailable';
+  const toggle = $('#bioToggle');
+  toggle.checked = bio.enabled;
+  toggle.disabled = bio.status !== 'available';
+  $('#bioNote').textContent = bio.status === 'none_enrolled'
+    ? 'Daftarkan sidik jari di pengaturan HP dulu'
+    : 'PIN tetap bisa dipakai kapan saja';
+}
+async function unlockWithBio() {
+  if (!bio.plugin || !bio.enabled || bio.prompting || pin.busy) return;
+  bio.prompting = true;
+  try {
+    const r = await bio.plugin.call('unlock');
+    pin.value = String(r.secret || '');
+    renderDots();
+    await submitPin();
+  } catch (e) {
+    const code = e && e.code;
+    if (code === 'invalidated' || code === 'not_enabled') {
+      bio.enabled = false;
+      $('#lockBio').hidden = true;
+      pinError(e.message);
+    } else if (code === 'lockout') {
+      pinError('Terlalu banyak percobaan sidik jari. Pakai PIN.');
+    } else if (code !== 'cancelled') {
+      pinError(e.message || 'Sidik jari gagal, pakai PIN.');
+    }
+  } finally {
+    bio.prompting = false;
+  }
+}
+function disableBio() {
+  bio.enabled = false;
+  if (bio.plugin) Promise.resolve(bio.plugin.call('disable')).catch(() => {});
+  renderBio();
+}
+function cancelBioSetup() {
+  pin.value = '';
+  showOnly('main');
+  renderBio();
+}
+$('#lockBio').addEventListener('click', unlockWithBio);
+$('#lockCancel').addEventListener('click', cancelBioSetup);
+$('#bioToggle').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    e.target.checked = false; // baru menyala setelah PIN & sidik jari dikonfirmasi
+    showLock('bio', 'Masukkan PIN untuk mengaktifkan sidik jari.');
+  } else {
+    disableBio();
+    toast('Sidik jari dimatikan, buka dengan PIN');
+  }
+});
+refreshBio();
 const PIN_MIN = 4;
 const PIN_MAX = 6;
 
@@ -1231,12 +1313,16 @@ function showLock(mode, sub) {
   pin.mode = mode;
   pin.value = '';
   showOnly('lock');
-  $('#lockTitle').textContent = mode === 'unlock' ? 'Masukkan PIN' : mode === 'create' ? 'Buat PIN' : 'Ulangi PIN';
+  $('#lockTitle').textContent = mode === 'unlock' || mode === 'bio' ? 'Masukkan PIN' : mode === 'create' ? 'Buat PIN' : 'Ulangi PIN';
   $('#lockSub').textContent = sub || (mode === 'unlock'
     ? 'PC Remote terkunci'
     : `PIN ${PIN_MIN}–${PIN_MAX} angka untuk membuka aplikasi. Token PC disimpan terenkripsi dengan PIN ini.`);
   $('#lockError').hidden = true;
+  $('#lockCancel').hidden = mode !== 'bio';
+  $('#lockBio').hidden = !(mode === 'unlock' && bio.enabled);
   renderDots();
+  // Sidik jari aktif → langsung tampilkan dialog sidik jari HP (PIN tetap bisa diketik).
+  if (mode === 'unlock' && bio.enabled) setTimeout(() => { if (pin.mode === 'unlock' && !$('#lock').hidden) unlockWithBio(); }, 350);
 }
 function renderDots() {
   const dots = $('#pinDots');
@@ -1281,6 +1367,21 @@ async function submitPin() {
       pin.pendingToken = '';
       pin.first = '';
       startMain();
+      return;
+    }
+    if (pin.mode === 'bio') {
+      // Konfirmasi PIN sebelum menyimpannya untuk sidik jari (tidak dihitung sebagai percobaan salah).
+      try { await openVault(value); } catch { return pinError('PIN salah'); }
+      pin.value = '';
+      try {
+        await bio.plugin.call('enable', { secret: value });
+        bio.enabled = true;
+        toast('👆 Sidik jari aktif');
+      } catch (e) {
+        if (e && e.code !== 'cancelled') toast(`❌ ${e.message || 'Gagal mengaktifkan sidik jari'}`);
+      }
+      showOnly('main');
+      renderBio();
       return;
     }
     // unlock

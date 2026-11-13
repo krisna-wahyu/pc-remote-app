@@ -21,6 +21,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SystemBarsPlugin.class);
         registerPlugin(AppCachePlugin.class);
         registerPlugin(ClaudeMonitorPlugin.class);
+        registerPlugin(BiometricPlugin.class);
         super.onCreate(savedInstanceState);
         fitWebViewAboveKeyboard();
         if (getIntent() != null && getIntent().getBooleanExtra(ClaudeMonitorService.EXTRA_OPEN_CHAT, false)) openChat(0);

@@ -476,6 +476,34 @@ mark.hl.current { background: var(--warn); color: #111; box-shadow: 0 0 0 2px rg
 .update-progress i { display: block; height: 100%; width: 0; background: var(--red-2); transition: width .2s ease; }
 
 /* Pilihan tema (di Pengaturan) */
+/* Sidik jari: tombol di layar PIN + saklar di Pengaturan */
+.lock-actions { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 20px; min-height: 44px; }
+.bio-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  min-height: 46px; padding: 0 18px; border-radius: 999px;
+  border: 1px solid var(--tint-border); background: var(--tint); color: var(--red-2);
+  font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.bio-btn svg { width: 24px; height: 24px; }
+.bio-btn:active { background: var(--tint-2); }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.setting-row[hidden] { display: none; }
+.setting-text { display: flex; flex-direction: column; min-width: 0; }
+.setting-text b { font-size: 14px; font-weight: 600; }
+.setting-text small { font-size: 12px; color: var(--muted); }
+.switch {
+  appearance: none; -webkit-appearance: none; flex: none; position: relative; margin: 0;
+  width: 46px; height: 28px; border-radius: 14px; cursor: pointer;
+  background: var(--surface-3); border: 1px solid var(--line); transition: background .15s ease;
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s ease;
+}
+.switch:checked { background: var(--red); border-color: var(--red); }
+.switch:checked::after { transform: translateX(18px); }
+.switch:disabled { opacity: .45; cursor: default; }
+
 .theme-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .theme-row > span { font-size: 14px; color: var(--muted); }
 .segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
