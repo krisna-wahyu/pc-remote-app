@@ -308,6 +308,19 @@
       </div>
 
       <div class="rd-group">
+        <span class="rd-label">Frame per detik (fps)</span>
+        <div class="segmented rd-seg" id="rdFps">
+          <button type="button" data-fps="30">30</button>
+          <button type="button" data-fps="24">24</button>
+          <button type="button" data-fps="20">20</button>
+          <button type="button" data-fps="15">15</button>
+          <button type="button" data-fps="10">10</button>
+          <button type="button" data-fps="5">5</button>
+        </div>
+        <small class="rd-hint">Lebih rendah = hemat kuota & beban PC, gerakan kurang mulus.</small>
+      </div>
+
+      <div class="rd-group">
         <span class="rd-label">Mode input</span>
         <div class="segmented rd-seg" id="rdMode">
           <button type="button" data-mode="trackpad">Trackpad</button>
@@ -322,7 +335,7 @@
       </div>
 
       <label class="setting-row">
-        <span class="setting-text"><b>Tampilkan kursor PC</b><small>Kursor mouse ikut digambar di layar</small></span>
+        <span class="setting-text"><b>Tampilkan kursor PC</b><small id="rdCursorNote">Kursor mouse ikut digambar di layar</small></span>
         <input type="checkbox" id="rdCursorToggle" class="switch" role="switch">
       </label>
 

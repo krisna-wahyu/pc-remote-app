@@ -12,7 +12,7 @@
     asli: { w: 0, q: 80 },
   };
   const MOD_VK = { ctrl: 17, alt: 18, shift: 16, win: 91 };
-  const FPS = 30;
+  const FPS_OPTIONS = [30, 24, 20, 15, 10, 5];
   const WORKERS = 2; // cadangan (bot lama): dua permintaan gambar bergantian → jeda jaringan tertutupi
   const STALL_MS = 6000; // stream tanpa paket selama ini → sambung ulang
   const SPEED_DEFAULT = 0.5; // kecepatan kursor trackpad (1 = selebar layar HP → selebar layar PC)
@@ -36,6 +36,10 @@
     mode: pref.get('mode', 'trackpad') === 'touch' ? 'touch' : 'trackpad',
     cursor: pref.get('cursor', '1') === '1',
     speed: clampSpeed(Number(pref.get('speed', String(SPEED_DEFAULT)))),
+    fps: FPS_OPTIONS.includes(Number(pref.get('fps', '30'))) ? Number(pref.get('fps', '30')) : 30,
+    realCx: null, // posisi kursor sungguhan di PC (dari stream)
+    realCy: null,
+    lastLocalMove: 0,
     useStream: true,
     streamCtl: null,
     lastPacket: 0,
@@ -113,21 +117,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = rd.zoom > 1.5 ? 'low' : 'high';
+    // Tanpa penanda tambahan: yang terlihat hanya kursor Windows asli yang ikut tergambar di layar PC.
     ctx.drawImage(rd.frame, g.ox, g.oy, g.w, g.h);
-    if (rd.mode === 'trackpad') {
-      // Penanda kursor lokal: langsung mengikuti jari walau gambar dari PC belum sampai.
-      const x = g.ox + rd.cx * g.w;
-      const y = g.oy + rd.cy * g.h;
-      ctx.beginPath();
-      ctx.arc(x, y, 9, 0, Math.PI * 2);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255,59,74,.95)';
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff';
-      ctx.fill();
-    }
   }
 
   // Titik di layar HP → koordinat PC (0..1).
@@ -182,7 +173,10 @@
       const seq = ++rd.reqSeq;
       const t0 = performance.now();
       const q = QUALITY[rd.quality];
-      const url = `${cfg.server}/api/remote/frame?monitor=${rd.monitor}&w=${q.w}&q=${q.q}&cursor=${rd.cursor ? 1 : 0}`;
+      const url = `${cfg.server}/api/remote/frame?monitor=${rd.monitor}&w=${q.w}&q=${q.q}&cursor=${showCursor() ? 1 : 0}`;
+      // Batas fps juga berlaku di mode cadangan (tiap pekerja paling cepat WORKERS/fps detik sekali).
+      const minGap = (1000 * WORKERS) / rd.fps;
+      const pace = sleep(minGap);
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 15000);
       try {
@@ -203,6 +197,7 @@
         rd.lastMs = performance.now() - t0;
         setStatus('');
         draw();
+        await pace;
       } catch (e) {
         if (gen !== rd.gen) return;
         if (e.status === 401) { setStatus('Token ditolak PC. Sambungkan ulang.'); stop(); return; }
@@ -218,8 +213,10 @@
   // ---- Stream 30 fps ----
   function streamUrl() {
     const q = QUALITY[rd.quality];
-    return `${cfg.server}/api/remote/stream?monitor=${rd.monitor}&w=${q.w}&q=${q.q}&cursor=${rd.cursor ? 1 : 0}&fps=${FPS}`;
+    return `${cfg.server}/api/remote/stream?monitor=${rd.monitor}&w=${q.w}&q=${q.q}&cursor=${showCursor() ? 1 : 0}&fps=${rd.fps}`;
   }
+  // Mode trackpad selalu menampilkan kursor PC (satu-satunya penunjuk posisi); mode sentuh ikut setelan.
+  function showCursor() { return rd.mode === 'trackpad' || rd.cursor; }
 
   // Dekode hanya gambar terbaru: kalau HP lebih lambat dari stream, gambar di antaranya dilewati.
   async function showJpeg(bytes, gen) {
@@ -276,7 +273,11 @@
             const body = buf.subarray(off + 5, off + 5 + len);
             off += 5 + len;
             if (type === 1) { rd.stamps.push(now); showJpeg(body.slice(), gen); } else if (type === 2) rd.stamps.push(now);
-            else if (type === 3) {
+            else if (type === 5 && len === 8) {
+              const dv = new DataView(body.buffer, body.byteOffset, 8);
+              rd.realCx = dv.getFloat32(0);
+              rd.realCy = dv.getFloat32(4);
+            } else if (type === 3) {
               let msg = 'gagal menangkap layar';
               try { msg = JSON.parse(new TextDecoder().decode(body)).error || msg; } catch { /* biarkan */ }
               setStatus(`${msg} · mencoba lagi…`);
@@ -419,6 +420,12 @@
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 1) {
       g2 = null;
+      // Trackpad melanjutkan dari posisi kursor sungguhan di PC (mis. setelah mouse PC digerakkan langsung),
+      // kecuali baru saja digerakkan dari HP (posisi dari PC mungkin belum menyusul).
+      if (rd.mode === 'trackpad' && rd.realCx !== null && performance.now() - rd.lastLocalMove > 600) {
+        rd.cx = clamp(rd.realCx, 0, 1);
+        rd.cy = clamp(rd.realCy, 0, 1);
+      }
       g1 = { sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, lt: performance.now(), t0: Date.now(), moved: false, done: false };
       g1.long = setTimeout(onLongPress, LONG_PRESS_MS);
     } else if (pts.size === 2) {
@@ -506,6 +513,7 @@
       g1.lx = e.clientX; g1.ly = e.clientY; g1.lt = now;
       if (g1.moved) {
         send({ t: 'move', x: rd.cx, y: rd.cy });
+        rd.lastLocalMove = performance.now();
         followCursor();
         draw();
       }
@@ -635,13 +643,25 @@
     touch: 'Ketuk = klik di titik itu · tahan = klik kanan · geser 1 jari = drag · geser 2 jari = scroll · cubit = zoom',
   };
   function setMode(m) {
+    const cursorBefore = showCursor();
     rd.mode = m;
     pref.set('mode', m);
     $('#rdModeTrackpad').hidden = m !== 'trackpad';
     $('#rdModeTouch').hidden = m !== 'touch';
     $$('#rdMode button').forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
     $('#rdModeHint').textContent = MODE_HINT[m];
+    renderCursorToggle();
+    if (showCursor() !== cursorBefore) restartStream(); // kursor PC ikut / tidak ikut digambar
     draw();
+  }
+  // Di mode trackpad kursor PC selalu tampil, jadi saklarnya hanya berlaku untuk mode sentuh.
+  function renderCursorToggle() {
+    const t = $('#rdCursorToggle');
+    t.checked = showCursor();
+    t.disabled = rd.mode === 'trackpad';
+    $('#rdCursorNote').textContent = rd.mode === 'trackpad'
+      ? 'Selalu tampil di mode trackpad'
+      : 'Kursor mouse ikut digambar di layar';
   }
   $('#rdModeBtn').addEventListener('click', () => {
     setMode(rd.mode === 'trackpad' ? 'touch' : 'trackpad');
@@ -704,6 +724,17 @@
     restartStream();
   });
   // Kecepatan kursor trackpad (slider 15–150%).
+  // Batas fps (30/24/20/15/10/5): lebih rendah = hemat data & CPU PC.
+  function renderFps() { $$('#rdFps button').forEach((b) => b.classList.toggle('active', Number(b.dataset.fps) === rd.fps)); }
+  $$('#rdFps button').forEach((b) => b.addEventListener('click', () => {
+    const f = Number(b.dataset.fps);
+    if (f === rd.fps) return;
+    rd.fps = f;
+    pref.set('fps', f);
+    renderFps();
+    restartStream();
+  }));
+
   function renderSpeed() {
     $('#rdSpeed').value = String(Math.round(rd.speed * 100));
     $('#rdSpeedVal').textContent = `${Math.round(rd.speed * 100)}%`;
@@ -718,8 +749,8 @@
     renderMonitorList();
     renderQuality();
     renderSpeed();
+    renderFps();
     setMode(rd.mode);
-    $('#rdCursorToggle').checked = rd.cursor;
     $('#rdSheet').hidden = false;
     pushLayer('rdsheet');
     if (rd.active) loadMonitors(rd.gen); // monitor bisa saja dicolok/dicabut
