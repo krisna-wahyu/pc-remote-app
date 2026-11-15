@@ -87,7 +87,9 @@ body {
 [hidden] { display: none !important; }
 /* Aplikasi, bukan halaman web: matikan pinch-zoom & zoom ketuk-ganda (hanya geser yang diizinkan).
    Penampil foto (.viewer) sengaja tidak termasuk di sini. */
-.connect, .lock, .main, .sheet { touch-action: pan-x pan-y; }
+.main, .sheet { touch-action: pan-x pan-y; }
+/* Layar sambung & PIN: hanya geser atas-bawah (efek cahaya di belakang logo lebih lebar dari layar). */
+.connect, .lock { touch-action: pan-y; }
 button { font: inherit; color: inherit; }
 svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 6px; }
@@ -136,7 +138,7 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
 .icon-btn:active { background: var(--surface-2); }
 
 /* ---------- Layar sambung ---------- */
-.connect { position: fixed; inset: 0; overflow-y: auto; padding: calc(var(--safe-top) + 48px) 20px calc(var(--safe-bottom) + 32px); }
+.connect { position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto; padding: calc(var(--safe-top) + 48px) 20px calc(var(--safe-bottom) + 32px); }
 .connect-glow {
   position: absolute; inset: -20% -40% auto; height: 70%;
   background: radial-gradient(closest-side, rgba(225,29,46,.33), transparent 70%);
@@ -159,7 +161,7 @@ code { font-family: var(--mono); font-size: .88em; background: var(--code-bg); p
 .hint b { color: var(--text); display: block; margin-bottom: 2px; }
 
 /* ---------- Kunci PIN ---------- */
-.lock { position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-y: auto; padding: calc(var(--safe-top) + 40px) 20px calc(var(--safe-bottom) + 24px); }
+.lock { position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-x: hidden; overflow-y: auto; padding: calc(var(--safe-top) + 40px) 20px calc(var(--safe-bottom) + 24px); }
 .lock-inner { position: relative; max-width: 360px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .lock h2 { margin: 20px 0 4px; font-size: 24px; }
 .lock .lead { margin-bottom: 22px; }
