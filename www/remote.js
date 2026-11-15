@@ -465,7 +465,11 @@
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
+  // Menyentuh layar PC tidak boleh merebut fokus dari kotak ketik tersembunyi: kalau fokus pindah, keyboard HP
+  // menutup padahal pengguna masih ingin mengetik. Keyboard hanya ditutup lewat tombol ⌨ atau Back.
+  stage.addEventListener('mousedown', (e) => e.preventDefault());
   stage.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
     if (!rd.frame) return;
     stage.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
