@@ -1,6 +1,7 @@
 // PC Remote — tab "Remote": remote desktop ala Chrome Remote Desktop.
-// Gambar layar diambil terus-menerus dari pc-remote-bot (/api/remote/frame, JPEG), mouse/keyboard/clipboard
-// dikirim lewat /api/remote/input & /api/remote/clipboard. Memakai helper global dari app.js
+// Gambar layar dikirim pc-remote-bot sebagai stream 30 fps (/api/remote/stream; layar diam = paket kecil "sama"),
+// cadangan untuk bot lama: ambil per gambar (/api/remote/frame). Mouse/keyboard/clipboard dikirim lewat
+// /api/remote/input & /api/remote/clipboard. Memakai helper global dari app.js
 // ($, $$, cfg, api, toast, pushLayer, closeTop, layers, state, copyText).
 'use strict';
 (() => {
@@ -11,7 +12,10 @@
     asli: { w: 0, q: 80 },
   };
   const MOD_VK = { ctrl: 17, alt: 18, shift: 16, win: 91 };
-  const WORKERS = 2; // dua permintaan gambar bergantian → jeda jaringan tertutupi
+  const FPS = 30;
+  const WORKERS = 2; // cadangan (bot lama): dua permintaan gambar bergantian → jeda jaringan tertutupi
+  const STALL_MS = 6000; // stream tanpa paket selama ini → sambung ulang
+  const SPEED_DEFAULT = 0.5; // kecepatan kursor trackpad (1 = selebar layar HP → selebar layar PC)
   const LONG_PRESS_MS = 450;
   const TAP_MS = 300;
   const MOVE_SLOP = 8;
@@ -22,6 +26,7 @@
     get: (k, d) => { try { const v = localStorage.getItem(`rd.${k}`); return v === null ? d : v; } catch { return d; } },
     set: (k, v) => { try { localStorage.setItem(`rd.${k}`, String(v)); } catch { /* abaikan */ } },
   };
+  function clampSpeed(v) { return Number.isFinite(v) ? Math.min(1.5, Math.max(0.15, v)) : SPEED_DEFAULT; }
 
   const rd = {
     active: false,
@@ -30,6 +35,14 @@
     quality: QUALITY[pref.get('quality', 'seimbang')] ? pref.get('quality', 'seimbang') : 'seimbang',
     mode: pref.get('mode', 'trackpad') === 'touch' ? 'touch' : 'trackpad',
     cursor: pref.get('cursor', '1') === '1',
+    speed: clampSpeed(Number(pref.get('speed', String(SPEED_DEFAULT)))),
+    useStream: true,
+    streamCtl: null,
+    lastPacket: 0,
+    restarting: false,
+    decoding: false,
+    pendingJpeg: null,
+    byteLog: [],
     monitors: [],
     all: null,
     frame: null,
@@ -202,11 +215,110 @@
     }
   }
 
+  // ---- Stream 30 fps ----
+  function streamUrl() {
+    const q = QUALITY[rd.quality];
+    return `${cfg.server}/api/remote/stream?monitor=${rd.monitor}&w=${q.w}&q=${q.q}&cursor=${rd.cursor ? 1 : 0}&fps=${FPS}`;
+  }
+
+  // Dekode hanya gambar terbaru: kalau HP lebih lambat dari stream, gambar di antaranya dilewati.
+  async function showJpeg(bytes, gen) {
+    rd.pendingJpeg = bytes;
+    if (rd.decoding) return;
+    rd.decoding = true;
+    try {
+      while (rd.pendingJpeg && gen === rd.gen) {
+        const b = rd.pendingJpeg;
+        rd.pendingJpeg = null;
+        const bmp = await createImageBitmap(new Blob([b], { type: 'image/jpeg' }));
+        if (gen !== rd.gen) { bmp.close?.(); break; }
+        if (rd.frame && rd.frame.close) rd.frame.close();
+        rd.frame = bmp;
+        if (rd.fw !== bmp.width || rd.fh !== bmp.height) { rd.fw = bmp.width; rd.fh = bmp.height; }
+        setStatus('');
+        draw();
+      }
+    } catch { /* gambar rusak: tunggu berikutnya */ } finally {
+      rd.decoding = false;
+    }
+  }
+
+  async function streamLoop(gen) {
+    while (rd.active && gen === rd.gen) {
+      const ctl = new AbortController();
+      rd.streamCtl = ctl;
+      rd.restarting = false;
+      rd.lastPacket = performance.now();
+      try {
+        const res = await fetch(streamUrl(), { headers: { Authorization: `Bearer ${cfg.token}` }, cache: 'no-store', signal: ctl.signal });
+        if (res.status === 404) { rd.useStream = false; return pollFallback(gen); } // bot versi lama
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw Object.assign(new Error(d.error || `HTTP ${res.status}`), { status: res.status });
+        }
+        const reader = res.body.getReader();
+        let buf = new Uint8Array(0);
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const now = performance.now();
+          rd.lastPacket = now;
+          rd.byteLog.push([now, value.length]);
+          const merged = new Uint8Array(buf.length + value.length);
+          merged.set(buf);
+          merged.set(value, buf.length);
+          buf = merged;
+          let off = 0;
+          while (buf.length - off >= 5) {
+            const len = ((buf[off + 1] << 24) | (buf[off + 2] << 16) | (buf[off + 3] << 8) | buf[off + 4]) >>> 0;
+            if (buf.length - off < 5 + len) break;
+            const type = buf[off];
+            const body = buf.subarray(off + 5, off + 5 + len);
+            off += 5 + len;
+            if (type === 1) { rd.stamps.push(now); showJpeg(body.slice(), gen); } else if (type === 2) rd.stamps.push(now);
+            else if (type === 3) {
+              let msg = 'gagal menangkap layar';
+              try { msg = JSON.parse(new TextDecoder().decode(body)).error || msg; } catch { /* biarkan */ }
+              setStatus(`${msg} · mencoba lagi…`);
+            }
+          }
+          buf = off ? buf.slice(off) : buf;
+        }
+        if (gen !== rd.gen) return;
+        if (!rd.restarting) { setStatus('Sambungan layar terputus · menyambung ulang…'); await sleep(800); }
+      } catch (e) {
+        if (gen !== rd.gen) return;
+        if (rd.restarting) continue; // ganti layar / kualitas → langsung sambung dengan setelan baru
+        if (e.status === 401) { setStatus('Token ditolak PC. Sambungkan ulang.'); stop(); return; }
+        const msg = e.name === 'AbortError' ? 'PC tidak mengirim gambar' : e instanceof TypeError ? 'PC tidak bisa dihubungi' : e.message;
+        setStatus(`${msg} · mencoba lagi…`);
+        await sleep(1500);
+      }
+    }
+  }
+
+  // Setelan gambar berubah → putus & sambung ulang stream dengan setelan baru.
+  function restartStream() {
+    if (!rd.active || !rd.useStream || !rd.streamCtl) return;
+    rd.restarting = true;
+    rd.streamCtl.abort();
+  }
+
+  function pollFallback(gen) {
+    for (let i = 0; i < WORKERS; i++) worker(gen, i * 90);
+  }
+
   function renderStats() {
     const now = performance.now();
     rd.stamps = rd.stamps.filter((t) => now - t < 2000);
+    rd.byteLog = rd.byteLog.filter(([t]) => now - t < 2000);
+    // Stream yang macet (tanpa paket, bukan sekadar layar diam) → sambung ulang.
+    if (rd.active && rd.useStream && rd.streamCtl && now - rd.lastPacket > STALL_MS) rd.streamCtl.abort();
     const fps = rd.stamps.length / 2;
-    $('#rdStats').textContent = rd.active && rd.frame ? `${fps.toFixed(fps < 10 ? 1 : 0)} fps · ${Math.round(rd.bytes / 1024)} KB · ${Math.round(rd.lastMs)} ms` : '';
+    const kbps = rd.byteLog.reduce((s, [, n]) => s + n, 0) / 2 / 1024;
+    $('#rdStats').textContent = !rd.active || !rd.frame ? ''
+      : rd.useStream ? `${Math.round(fps)} fps · ${kbps >= 1024 ? `${(kbps / 1024).toFixed(1)} MB` : `${Math.round(kbps)} KB`}/dtk`
+        : `${fps.toFixed(fps < 10 ? 1 : 0)} fps · ${Math.round(rd.bytes / 1024)} KB · ${Math.round(rd.lastMs)} ms`;
   }
 
   function start() {
@@ -216,13 +328,15 @@
     if (!rd.frame) setStatus('Menghubungkan ke layar PC…');
     resizeCanvas();
     loadMonitors(gen);
-    for (let i = 0; i < WORKERS; i++) worker(gen, i * 90);
+    if (rd.useStream) streamLoop(gen); else pollFallback(gen);
   }
 
   function stop() {
     if (!rd.active) return;
     rd.active = false;
     rd.gen++;
+    if (rd.streamCtl) { rd.streamCtl.abort(); rd.streamCtl = null; }
+    rd.pendingJpeg = null;
     if (rd.dragging) { send({ t: 'up', b: 'left' }); rd.dragging = false; }
     clearMods();
     if (document.activeElement === kbd) kbd.blur();
@@ -381,12 +495,14 @@
       const now = performance.now();
       const dx = e.clientX - g1.lx;
       const dy = e.clientY - g1.ly;
-      const speed = Math.hypot(dx, dy) / Math.max(1, now - g1.lt); // px/ms
-      const accel = clamp(1 + speed * 0.9, 1, 3.2);
-      // Kecepatan kursor relatif terhadap gambar utuh (zoom 1), bukan bagian yang diperbesar → konsisten saat zoom.
+      // Akselerasi lembut: gerakan pelan = presisi, sapuan cepat = sedikit lebih jauh.
+      const v = Math.hypot(dx, dy) / Math.max(1, now - g1.lt); // px/ms
+      const accel = clamp(1 + (v - 0.3) * 0.6, 1, 2);
+      // Relatif terhadap gambar utuh (zoom 1), bukan bagian yang diperbesar → kecepatan sama saat zoom.
       const s0 = Math.min(geo.sw / rd.fw, geo.sh / rd.fh);
-      rd.cx = clamp(rd.cx + (dx * accel) / (rd.fw * s0), 0, 1);
-      rd.cy = clamp(rd.cy + (dy * accel) / (rd.fh * s0), 0, 1);
+      const k = accel * rd.speed;
+      rd.cx = clamp(rd.cx + (dx * k) / (rd.fw * s0), 0, 1);
+      rd.cy = clamp(rd.cy + (dy * k) / (rd.fh * s0), 0, 1);
       g1.lx = e.clientX; g1.ly = e.clientY; g1.lt = now;
       if (g1.moved) {
         send({ t: 'move', x: rd.cx, y: rd.cy });
@@ -572,18 +688,36 @@
     rd.shownSeq = rd.reqSeq; // abaikan gambar layar lama yang masih di jalan
     renderMonitorLabel();
     setStatus('Mengganti layar…');
+    restartStream();
   }
   function renderQuality() { $$('#rdQuality button').forEach((b) => b.classList.toggle('active', b.dataset.q === rd.quality)); }
   $$('#rdQuality button').forEach((b) => b.addEventListener('click', () => {
+    if (rd.quality === b.dataset.q) return;
     rd.quality = b.dataset.q;
     pref.set('quality', rd.quality);
     renderQuality();
+    restartStream();
   }));
-  $('#rdCursorToggle').addEventListener('change', (e) => { rd.cursor = e.target.checked; pref.set('cursor', rd.cursor ? '1' : '0'); });
+  $('#rdCursorToggle').addEventListener('change', (e) => {
+    rd.cursor = e.target.checked;
+    pref.set('cursor', rd.cursor ? '1' : '0');
+    restartStream();
+  });
+  // Kecepatan kursor trackpad (slider 15–150%).
+  function renderSpeed() {
+    $('#rdSpeed').value = String(Math.round(rd.speed * 100));
+    $('#rdSpeedVal').textContent = `${Math.round(rd.speed * 100)}%`;
+  }
+  $('#rdSpeed').addEventListener('input', (e) => {
+    rd.speed = clampSpeed(Number(e.target.value) / 100);
+    pref.set('speed', rd.speed);
+    $('#rdSpeedVal').textContent = `${Math.round(rd.speed * 100)}%`;
+  });
 
   function openSheet() {
     renderMonitorList();
     renderQuality();
+    renderSpeed();
     setMode(rd.mode);
     $('#rdCursorToggle').checked = rd.cursor;
     $('#rdSheet').hidden = false;

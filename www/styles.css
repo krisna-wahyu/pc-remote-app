@@ -625,3 +625,6 @@ mark.hl.current { background: var(--warn); color: #111; box-shadow: 0 0 0 2px rg
 .rd-clip:focus { border-color: var(--red); }
 .rd-clip-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .rd-clip-actions .btn { flex: 1; }
+.rd-label-row { display: flex; justify-content: space-between; align-items: baseline; }
+.rd-label-row b { color: var(--red-2); font-size: 13px; }
+.rd-range { width: 100%; accent-color: var(--red); height: 28px; margin: 0; }
