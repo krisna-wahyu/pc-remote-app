@@ -542,6 +542,12 @@ window.pcOpenChat = function () {
   else state.pendingChat = true;
 };
 
+// Tombol kirim tidak boleh merebut fokus dari kotak ketik: kalau fokus pindah, keyboard HP menutup,
+// tata letak bergeser di tengah sentuhan dan klik pertama hilang (harus tekan kirim dua kali).
+// Dengan ini keyboard tetap terbuka dan pesan terkirim di sentuhan pertama.
+$('#sendBtn').addEventListener('pointerdown', (e) => e.preventDefault());
+$('#sendBtn').addEventListener('mousedown', (e) => e.preventDefault());
+
 $('#composer').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = $('#input');

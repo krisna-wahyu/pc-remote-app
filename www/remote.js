@@ -45,7 +45,6 @@
     lastPacket: 0,
     restarting: false,
     decoding: false,
-    pendingJpeg: null,
     byteLog: [],
     monitors: [],
     all: null,
@@ -219,25 +218,75 @@
   function showCursor() { return rd.mode === 'trackpad' || rd.cursor; }
 
   // Dekode hanya gambar terbaru: kalau HP lebih lambat dari stream, gambar di antaranya dilewati.
-  async function showJpeg(bytes, gen) {
-    rd.pendingJpeg = bytes;
-    if (rd.decoding) return;
+  // Salinan layar PC di HP. Gambar penuh menggambar ulang semuanya; potongan (paket 6) ditempel di posisinya.
+  // Diproses berurutan (potongan tidak boleh dilewati), tapi gambar penuh membuang potongan lama yang masih antre.
+  const screen = document.createElement('canvas');
+  const sctx = screen.getContext('2d', { alpha: false });
+  const applyQueue = [];
+  let screenReady = false;
+  let redrawQueued = false;
+  const jpegBitmap = (bytes) => createImageBitmap(new Blob([bytes], { type: 'image/jpeg' }));
+
+  function queueRedraw() {
+    if (redrawQueued) return;
+    redrawQueued = true;
+    requestAnimationFrame(() => { redrawQueued = false; draw(); });
+  }
+
+  function enqueue(item, gen) {
+    if (item.full) applyQueue.length = 0; // gambar penuh menggantikan potongan yang belum sempat ditempel
+    applyQueue.push(item);
+    if (!rd.decoding) processQueue(gen);
+  }
+
+  async function processQueue(gen) {
     rd.decoding = true;
     try {
-      while (rd.pendingJpeg && gen === rd.gen) {
-        const b = rd.pendingJpeg;
-        rd.pendingJpeg = null;
-        const bmp = await createImageBitmap(new Blob([b], { type: 'image/jpeg' }));
-        if (gen !== rd.gen) { bmp.close?.(); break; }
-        if (rd.frame && rd.frame.close) rd.frame.close();
-        rd.frame = bmp;
-        if (rd.fw !== bmp.width || rd.fh !== bmp.height) { rd.fw = bmp.width; rd.fh = bmp.height; }
+      while (applyQueue.length && gen === rd.gen) {
+        const item = applyQueue.shift();
+        try {
+          if (item.full) {
+            const bmp = await jpegBitmap(item.jpeg);
+            if (gen !== rd.gen) { bmp.close?.(); break; }
+            if (screen.width !== bmp.width || screen.height !== bmp.height) { screen.width = bmp.width; screen.height = bmp.height; }
+            sctx.drawImage(bmp, 0, 0);
+            bmp.close?.();
+            screenReady = true;
+          } else {
+            // Potongan hanya berlaku di atas gambar penuh dengan ukuran yang sama.
+            if (!screenReady || item.w !== screen.width || item.h !== screen.height) continue;
+            const bmps = await Promise.all(item.rects.map((r) => jpegBitmap(r.jpeg)));
+            if (gen !== rd.gen) { bmps.forEach((b) => b.close?.()); break; }
+            item.rects.forEach((r, i) => { sctx.drawImage(bmps[i], r.x, r.y, r.w, r.h); bmps[i].close?.(); });
+          }
+        } catch { continue; /* gambar rusak: lewati */ }
+        if (rd.frame !== screen) {
+          if (rd.frame && rd.frame.close) rd.frame.close();
+          rd.frame = screen;
+        }
+        if (rd.fw !== screen.width || rd.fh !== screen.height) { rd.fw = screen.width; rd.fh = screen.height; }
         setStatus('');
-        draw();
+        queueRedraw();
       }
-    } catch { /* gambar rusak: tunggu berikutnya */ } finally {
+    } finally {
       rd.decoding = false;
     }
+  }
+
+  // Paket 6: [u16 lebar][u16 tinggi][u16 jumlah] lalu tiap potongan [u16 x][u16 y][u16 w][u16 h][u32 panjang][JPEG]
+  function parseDelta(body) {
+    const dv = new DataView(body.buffer, body.byteOffset, body.byteLength);
+    const w = dv.getUint16(0);
+    const h = dv.getUint16(2);
+    const n = dv.getUint16(4);
+    const rects = [];
+    let off = 6;
+    for (let i = 0; i < n && off + 12 <= body.byteLength; i++) {
+      const len = dv.getUint32(off + 8);
+      rects.push({ x: dv.getUint16(off), y: dv.getUint16(off + 2), w: dv.getUint16(off + 4), h: dv.getUint16(off + 6), jpeg: body.slice(off + 12, off + 12 + len) });
+      off += 12 + len;
+    }
+    return { full: false, w, h, rects };
   }
 
   async function streamLoop(gen) {
@@ -272,7 +321,9 @@
             const type = buf[off];
             const body = buf.subarray(off + 5, off + 5 + len);
             off += 5 + len;
-            if (type === 1) { rd.stamps.push(now); showJpeg(body.slice(), gen); } else if (type === 2) rd.stamps.push(now);
+            if (type === 1) { rd.stamps.push(now); enqueue({ full: true, jpeg: body.slice() }, gen); }
+            else if (type === 6) { rd.stamps.push(now); enqueue(parseDelta(body), gen); }
+            else if (type === 2) rd.stamps.push(now);
             else if (type === 5 && len === 8) {
               const dv = new DataView(body.buffer, body.byteOffset, 8);
               rd.realCx = dv.getFloat32(0);
@@ -337,7 +388,7 @@
     rd.active = false;
     rd.gen++;
     if (rd.streamCtl) { rd.streamCtl.abort(); rd.streamCtl = null; }
-    rd.pendingJpeg = null;
+    applyQueue.length = 0;
     if (rd.dragging) { send({ t: 'up', b: 'left' }); rd.dragging = false; }
     clearMods();
     if (document.activeElement === kbd) kbd.blur();
@@ -608,6 +659,12 @@
   });
 
   // ---------------------------------------------------------------- tombol khusus
+
+  // Tombol khusus & toolbar tidak merebut fokus: keyboard HP tetap terbuka saat menekan Ctrl, Esc, panah, dst.
+  $$('#rdKeys button, #rdBar button').forEach((b) => {
+    b.addEventListener('pointerdown', (e) => e.preventDefault());
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+  });
 
   $('#rdKeysBtn').addEventListener('click', () => {
     const k = $('#rdKeys');
