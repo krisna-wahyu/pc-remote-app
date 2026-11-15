@@ -18,6 +18,10 @@ Isinya hanya tampilan: semua logika (Open Project, Dev Mode, DB App, WordPress, 
 - **Chat**: seperti chat Telegram. Balasan bot, tombol pilihan, screenshot, dan laporan Claude Code
   muncul langsung (Server-Sent Events). Saat dev mode aktif, ketikan dikirim sebagai prompt ke Claude Code,
   dan foto/file ikut diteruskan.
+- **Remote**: remote desktop ala Chrome Remote Desktop. Pilih layar (1, 2, … atau semua), kualitas gambar,
+  mode Trackpad / Sentuh langsung, keyboard HP + tombol khusus (Ctrl/Alt/Win, F1–F12, Task Manager, Alt+Tab),
+  clipboard HP ↔ PC, dan layar penuh. Ditangani `src/services/remote.js` di pc-remote-bot (tanpa install tambahan);
+  setiap sesi baru dikabarkan ke Telegram.
 - HP terhubung ke PC lewat **Tailscale** (dari mana saja) atau WiFi rumah. Server hanya menerima jaringan
   lokal/Tailscale dan wajib token.
 

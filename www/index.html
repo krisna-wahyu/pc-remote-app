@@ -137,6 +137,80 @@
       </button>
     </div>
 
+    <!-- Remote desktop (logika di remote.js) -->
+    <div id="tabRemote" class="remote" hidden>
+      <div id="rdStage" class="rd-stage">
+        <canvas id="rdCanvas"></canvas>
+        <div id="rdStatus" class="rd-status">Menghubungkan ke layar PC…</div>
+        <span id="rdStats" class="rd-stats"></span>
+      </div>
+
+      <div id="rdKeys" class="rd-keys" hidden>
+        <div class="rd-keys-row">
+          <button type="button" class="mod" data-mod="ctrl">Ctrl</button>
+          <button type="button" class="mod" data-mod="alt">Alt</button>
+          <button type="button" class="mod" data-mod="shift">Shift</button>
+          <button type="button" class="mod" data-mod="win">⊞ Win</button>
+          <button type="button" data-vk="27">Esc</button>
+          <button type="button" data-vk="9">Tab</button>
+          <button type="button" data-vk="8">⌫</button>
+          <button type="button" data-vk="46">Del</button>
+          <button type="button" data-vk="13">Enter</button>
+          <button type="button" data-vk="37">←</button>
+          <button type="button" data-vk="38">↑</button>
+          <button type="button" data-vk="40">↓</button>
+          <button type="button" data-vk="39">→</button>
+          <button type="button" data-vk="36">Home</button>
+          <button type="button" data-vk="35">End</button>
+          <button type="button" data-vk="33">PgUp</button>
+          <button type="button" data-vk="34">PgDn</button>
+        </div>
+        <div class="rd-keys-row">
+          <button type="button" data-combo="17,16,27" title="Ctrl+Shift+Esc">Task Manager</button>
+          <button type="button" data-combo="18,9">Alt+Tab</button>
+          <button type="button" data-combo="91,68">Win+D</button>
+          <button type="button" data-combo="17,67">Ctrl+C</button>
+          <button type="button" data-combo="17,86">Ctrl+V</button>
+          <button type="button" data-combo="17,90">Ctrl+Z</button>
+          <button type="button" data-combo="17,65">Ctrl+A</button>
+          <button type="button" data-combo="18,115">Alt+F4</button>
+          <button type="button" data-vk="112">F1</button><button type="button" data-vk="113">F2</button>
+          <button type="button" data-vk="114">F3</button><button type="button" data-vk="115">F4</button>
+          <button type="button" data-vk="116">F5</button><button type="button" data-vk="117">F6</button>
+          <button type="button" data-vk="118">F7</button><button type="button" data-vk="119">F8</button>
+          <button type="button" data-vk="120">F9</button><button type="button" data-vk="121">F10</button>
+          <button type="button" data-vk="122">F11</button><button type="button" data-vk="123">F12</button>
+        </div>
+      </div>
+
+      <div id="rdBar" class="rd-bar">
+        <button type="button" class="rd-chip" id="rdMonitorBtn" aria-label="Pilih layar">
+          <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          <span id="rdMonitorLabel">Layar 1</span>
+        </button>
+        <button type="button" class="rd-btn" id="rdModeBtn" aria-label="Mode input">
+          <svg id="rdModeTrackpad" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 15h18M12 15v5"/></svg>
+          <svg id="rdModeTouch" viewBox="0 0 24 24" hidden><path d="M9 11V5a2 2 0 1 1 4 0v6"/><path d="M13 10a2 2 0 1 1 4 0v2"/><path d="M17 11a2 2 0 1 1 4 0v4a7 7 0 0 1-7 7h-1a7 7 0 0 1-6-3.4l-2.7-4.6a2 2 0 0 1 3.4-2L9 14"/></svg>
+        </button>
+        <button type="button" class="rd-btn" id="rdKbdBtn" aria-label="Keyboard">
+          <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M8 16h8"/></svg>
+        </button>
+        <button type="button" class="rd-btn" id="rdKeysBtn" aria-label="Tombol khusus">
+          <span class="rd-btn-text">Ctrl</span>
+        </button>
+        <button type="button" class="rd-btn" id="rdFullBtn" aria-label="Layar penuh">
+          <svg id="rdFullIn" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          <svg id="rdFullOut" viewBox="0 0 24 24" hidden><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+        </button>
+        <button type="button" class="rd-btn" id="rdMenuBtn" aria-label="Pengaturan remote">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+        </button>
+      </div>
+
+      <!-- Penangkap keyboard HP (tidak terlihat) -->
+      <textarea id="rdKbd" class="rd-kbd" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="enter" aria-hidden="true"></textarea>
+    </div>
+
     <form id="composer" class="composer" hidden>
       <label class="icon-btn attach" aria-label="Kirim foto / file">
         <input id="fileInput" type="file" accept="image/*,application/pdf,.txt,.log,.zip" hidden>
@@ -157,6 +231,10 @@
         <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span>Chat</span>
         <b id="unread" class="badge" hidden>0</b>
+      </button>
+      <button class="tab" data-tab="remote">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m10 8 4 2-4 2z"/></svg>
+        <span>Remote</span>
       </button>
     </nav>
   </section>
@@ -207,6 +285,57 @@
     </div>
   </div>
 
+  <!-- ============ Pengaturan remote desktop ============ -->
+  <div id="rdSheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet-panel rd-sheet" role="dialog" aria-label="Pengaturan remote desktop">
+      <div class="sheet-handle"></div>
+      <h3>Remote desktop</h3>
+
+      <div class="rd-group">
+        <span class="rd-label">Layar yang ditampilkan</span>
+        <div id="rdMonitorList" class="rd-options"></div>
+      </div>
+
+      <div class="rd-group">
+        <span class="rd-label">Kualitas gambar</span>
+        <div class="segmented rd-seg" id="rdQuality">
+          <button type="button" data-q="hemat">Hemat</button>
+          <button type="button" data-q="seimbang">Seimbang</button>
+          <button type="button" data-q="tajam">Tajam</button>
+          <button type="button" data-q="asli">Asli</button>
+        </div>
+      </div>
+
+      <div class="rd-group">
+        <span class="rd-label">Mode input</span>
+        <div class="segmented rd-seg" id="rdMode">
+          <button type="button" data-mode="trackpad">Trackpad</button>
+          <button type="button" data-mode="touch">Sentuh langsung</button>
+        </div>
+        <small class="rd-hint" id="rdModeHint"></small>
+      </div>
+
+      <label class="setting-row">
+        <span class="setting-text"><b>Tampilkan kursor PC</b><small>Kursor mouse ikut digambar di layar</small></span>
+        <input type="checkbox" id="rdCursorToggle" class="switch" role="switch">
+      </label>
+
+      <div class="rd-group">
+        <span class="rd-label">Clipboard</span>
+        <textarea id="rdClipText" class="rd-clip" rows="3" placeholder="Teks untuk dikirim ke PC, atau hasil ambil dari PC"></textarea>
+        <div class="rd-clip-actions">
+          <button type="button" class="btn btn-sm" id="rdClipGet">Ambil dari PC</button>
+          <button type="button" class="btn btn-sm" id="rdClipSet">Kirim ke PC</button>
+          <button type="button" class="btn btn-sm btn-primary" id="rdClipPaste">Kirim &amp; tempel</button>
+        </div>
+      </div>
+
+      <button class="btn btn-block" id="rdLockPc">Kunci PC (Win+L)</button>
+      <button class="btn btn-ghost btn-block" data-close>Tutup</button>
+    </div>
+  </div>
+
   <!-- Penampil foto -->
   <div id="viewer" class="viewer" hidden>
     <img id="viewerImg" alt="">
@@ -233,5 +362,6 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>
+  <script src="remote.js"></script>
 </body>
 </html>

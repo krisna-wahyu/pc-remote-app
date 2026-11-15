@@ -617,7 +617,8 @@ window.addEventListener('popstate', () => {
   if (top === 'viewer') closeViewerNow();
   else if (top === 'sheet') $('#sheet').hidden = true;
   else if (top === 'msgmenu') closeMsgMenuNow();
-  else if (top === 'feed') showTab('home');
+  else if (top === 'rdsheet') $('#rdSheet').hidden = true;
+  else if (top === 'tab' || top === 'feed') showTab('home'); // Chat / Remote → kembali ke Beranda
 });
 
 // ---------- Cari di Aktivitas ----------
@@ -858,10 +859,11 @@ window.pcHandleBack = function () {
   if (!$('#lock').hidden && pin.mode === 'bio') { cancelBioSetup(); return true; }
   if ($('#main').hidden) return false;
   const top = layers[layers.length - 1];
-  if (top && top !== 'feed') { closeTop(); return true; } // foto, Pengaturan, menu Salin
+  if (top && top !== 'tab') { closeTop(); return true; } // foto, Pengaturan, menu Salin, pengaturan remote
+  if (window.pcRemote && window.pcRemote.handleBack()) return true; // keluar layar penuh / tutup keyboard remote
   if (search.open) { closeSearch(); return true; }
   if (layers.length) { closeTop(); return true; }
-  if (state.tab === 'feed') { showTab('home'); return true; } // mis. setelah buka kunci, catatan lapisan kosong
+  if (state.tab !== 'home') { showTab('home'); return true; } // mis. setelah buka kunci, catatan lapisan kosong
   return false;
 };
 
@@ -869,19 +871,28 @@ function showTab(tab) {
   state.tab = tab;
   $('#tabHome').hidden = tab !== 'home';
   $('#tabFeed').hidden = tab !== 'feed';
+  $('#tabRemote').hidden = tab !== 'remote';
   $('#composer').hidden = tab !== 'feed';
   $('#openSearch').hidden = tab !== 'feed';
   if (tab !== 'feed' && search.open) closeSearch();
   $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  if (window.pcRemote) window.pcRemote.onTab(tab); // mulai / hentikan gambar layar PC
   if (tab === 'feed') {
     state.unread = 0;
     updateUnread();
     requestAnimationFrame(() => scrollBottom(false));
   }
 }
+// Chat & Remote = satu entri history "tab": Back dari keduanya kembali ke Beranda,
+// pindah Chat ↔ Remote tidak menumpuk history.
 function switchTab(tab) {
   if (tab === state.tab) return;
-  if (tab === 'feed') { pushLayer('feed'); showTab('feed'); } else if (layers.includes('feed')) closeTop(); else showTab('home');
+  if (tab === 'home') {
+    if (layers.includes('tab')) closeTop(); else showTab('home');
+    return;
+  }
+  if (state.tab === 'home' && !layers.includes('tab')) pushLayer('tab');
+  showTab(tab);
 }
 $$('.tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
@@ -1434,6 +1445,8 @@ function resumeAfterUnlock() {
 }
 function closeAllLayers() {
   $('#sheet').hidden = true;
+  $('#rdSheet').hidden = true;
+  if (window.pcRemote) window.pcRemote.stop(); // aplikasi terkunci → berhenti mengambil gambar layar
   closeViewerNow();
   closeMsgMenuNow();
   closeSearch();
