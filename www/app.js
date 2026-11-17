@@ -100,6 +100,7 @@ const fileUrl = (f) => `${cfg.server}/api/files/${encodeURIComponent(f.id)}?sig=
 
 // ---------- Ikon menu ----------
 const ICONS = [
+  [/telegram/, '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>'],
   [/status|pc$/, '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'],
   [/internet|wifi/, '<path d="M5 12.6a11 11 0 0 1 14 0M1.4 9a16 16 0 0 1 21.2 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01"/>'],
   [/ai/, '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'],
