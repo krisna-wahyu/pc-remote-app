@@ -160,10 +160,25 @@
       if (gen !== rd.gen) return;
       rd.monitors = r.monitors || [];
       rd.all = r.all || null;
+      rd.system = r.system === true ? true : r.system === false ? false : null; // null = bot lama (tidak melapor)
       if (rd.monitor > rd.monitors.length) setMonitor(1);
       renderMonitorLabel();
       renderMonitorList();
+      renderSystemMode();
     } catch { /* gambar tetap dicoba; pesan error tampil dari sana */ }
+  }
+
+  // Mode SYSTEM (layanan PcRemoteSvc di PC): dialog UAC, layar kunci & Ctrl+Alt+Del bisa dikontrol.
+  function renderSystemMode() {
+    const box = $('#rdMode2');
+    $('#rdSas').hidden = rd.system !== true;
+    if (rd.system === null || rd.system === undefined) { box.hidden = true; return; }
+    box.hidden = false;
+    box.classList.toggle('on', rd.system);
+    box.textContent = rd.system
+      ? '🛡 Mode SYSTEM aktif — dialog UAC (Run as administrator), layar kunci & Ctrl+Alt+Del bisa dikontrol.'
+      : 'ℹ️ Dialog UAC & layar kunci belum bisa dikontrol. Pasang layanan sekali di PC (sebagai Administrator): '
+        + 'pc-remote-bot\\remote-service\\install.ps1';
   }
 
   async function worker(gen, delay) {
@@ -685,6 +700,12 @@
     clearMods();
     send({ t: 'combo', vks: b.dataset.combo.split(',').map(Number) });
   }));
+  // Ctrl+Alt+Del sungguhan (layanan SYSTEM); tidak bisa ditiru lewat kombinasi tombol biasa.
+  $('#rdSas').addEventListener('click', () => {
+    clearMods();
+    send({ t: 'sas' });
+    toast('Ctrl+Alt+Del dikirim');
+  });
 
   // ---------------------------------------------------------------- layar penuh
 
