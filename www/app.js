@@ -390,7 +390,7 @@ async function loadInfo() {
   $('#setHost').textContent = info.host || '—';
   renderMenu(info.menu || []);
   const dev = info.devmode;
-  $('#devBanner').hidden = !dev;
+  renderDevBanner();
   $('#devProject').textContent = dev ? dev.project : '';
   $('#input').placeholder = dev ? 'Prompt untuk Claude Code…' : 'Ketik balasan…'; // nama project sudah ada di banner DEV MODE
   updateHero();
@@ -874,6 +874,11 @@ window.pcHandleBack = function () {
   return false;
 };
 
+// Banner DEV MODE hanya di tab Chat (tempat prompt untuk Claude diketik), tidak di Beranda / Remote.
+function renderDevBanner() {
+  $('#devBanner').hidden = !(state.info && state.info.devmode) || state.tab !== 'feed';
+}
+
 function showTab(tab) {
   state.tab = tab;
   $('#tabHome').hidden = tab !== 'home';
@@ -881,6 +886,7 @@ function showTab(tab) {
   $('#tabRemote').hidden = tab !== 'remote';
   $('#composer').hidden = tab !== 'feed';
   $('#openSearch').hidden = tab !== 'feed';
+  renderDevBanner();
   if (tab !== 'feed' && search.open) closeSearch();
   $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   if (window.pcRemote) window.pcRemote.onTab(tab); // mulai / hentikan gambar layar PC
@@ -903,7 +909,12 @@ function switchTab(tab) {
 }
 $$('.tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
 
-$('#openSettings').addEventListener('click', () => { $('#sheet').hidden = false; pushLayer('sheet'); });
+$('#openSettings').addEventListener('click', () => {
+  $('#sheet').hidden = false;
+  pushLayer('sheet');
+  // Info versi di Pengaturan selalu cukup baru (tanpa toast: kartunya sendiri yang menampilkan hasilnya).
+  checkUpdateIfOlder(UPDATE_SETTINGS_RECHECK_MS, { silent: true });
+});
 $$('#sheet [data-close]').forEach((el) => el.addEventListener('click', closeTop));
 // ---------- Penampil foto: cubit dua jari, ketuk-ganda, geser ----------
 // Zoom bawaan WebView dimatikan (Capacitor zoomEnabled=false + viewport user-scalable=no),
@@ -1081,7 +1092,10 @@ try { renderThemePicker(); } catch (e) { console.error(e); }
 // ---------- Update aplikasi (GitHub Releases) ----------
 // APK dibangun GitHub Actions dan dirilis sebagai vX.Y.N; plugin native AppUpdate mengunduh & membuka installer.
 const UPDATE_REPO = 'krisna-wahyu/pc-remote-app';
-const UPDATE_CHECK_EVERY_MS = 6 * 60 * 60 * 1000; // cek otomatis maksimal tiap 6 jam (batas API GitHub)
+// Batas API GitHub tanpa login: 60 cek / jam per alamat → cek otomatis tiap 1 jam, saat Pengaturan dibuka tiap 10 menit,
+// dan SELALU cek ulang tepat sebelum mengunduh (supaya tidak mengunduh versi lama yang tersimpan).
+const UPDATE_CHECK_EVERY_MS = 60 * 60 * 1000;
+const UPDATE_SETTINGS_RECHECK_MS = 10 * 60 * 1000;
 const AppUpdate = (() => {
   let p = null;
   try { p = window.pcNative ? window.pcNative('AppUpdate') : null; } catch { p = null; }
@@ -1145,8 +1159,14 @@ function renderUpdate(percent) {
   }
 }
 
-async function checkUpdate({ manual = false } = {}) {
-  if (!AppUpdate || upd.checking || upd.installing) return;
+// manual: tombol "Cek update" (beri tahu kalau sudah terbaru); silent: tanpa toast sama sekali.
+// Mengembalikan true kalau berhasil mengambil info rilis terbaru dari GitHub.
+async function checkUpdate({ manual = false, silent = false } = {}) {
+  if (!AppUpdate || upd.installing) return false;
+  if (upd.checking) { // pengecekan lain sedang jalan → tunggu hasilnya
+    for (let i = 0; i < 150 && upd.checking; i++) await new Promise((r) => setTimeout(r, 100));
+    return !upd.error;
+  }
   upd.checking = true;
   upd.error = '';
   renderUpdate();
@@ -1165,10 +1185,12 @@ async function checkUpdate({ manual = false } = {}) {
     upd.latest = { version: String(rel.tag_name).replace(/^v/i, ''), url: asset.browser_download_url, date: rel.published_at };
     local.set('updateCheckedAt', String(Date.now()));
     local.set('updateLatest', JSON.stringify(upd.latest));
-    if (manual && !hasUpdate()) toast('✅ Aplikasi sudah versi terbaru');
-    else if (!manual && hasUpdate()) toast(`⬆️ Update v${upd.latest.version} tersedia di Pengaturan`);
+    if (!silent && manual && !hasUpdate()) toast('✅ Aplikasi sudah versi terbaru');
+    else if (!silent && !manual && hasUpdate()) toast(`⬆️ Update v${upd.latest.version} tersedia di Pengaturan`);
+    return true;
   } catch (e) {
     upd.error = e.name === 'AbortError' ? 'Gagal mengecek: waktu habis.' : `Gagal mengecek: ${e.message}`;
+    return false;
   } finally {
     upd.checking = false;
     renderUpdate();
@@ -1177,6 +1199,13 @@ async function checkUpdate({ manual = false } = {}) {
 
 async function installUpdate() {
   if (!hasUpdate() || upd.installing) return;
+  // Cek ulang dulu: info tersimpan bisa sudah usang (mis. tersimpan v1.1.18 padahal v1.1.19 sudah rilis).
+  // Kalau GitHub tidak bisa dihubungi, tetap pakai info tersimpan.
+  const before = upd.latest.version;
+  await checkUpdate({ silent: true });
+  upd.error = '';
+  if (!hasUpdate()) { renderUpdate(); toast('✅ Aplikasi sudah versi terbaru'); return; }
+  if (upd.latest.version !== before) toast(`⬆️ Ada versi lebih baru: v${upd.latest.version}`);
   const { allowed } = await AppUpdate.canInstall();
   if (!allowed) {
     upd.error = 'Izinkan "Pasang aplikasi tak dikenal" untuk PC Remote, lalu kembali dan tekan Update sekarang lagi.';
@@ -1207,10 +1236,18 @@ async function initUpdate() {
     try { upd.latest = JSON.parse(local.get('updateLatest') || 'null'); } catch { upd.latest = null; }
   }
   renderUpdate();
+  checkUpdateIfOlder(UPDATE_CHECK_EVERY_MS);
+}
+// Cek kalau pengecekan terakhir lebih lama dari maxAge.
+function checkUpdateIfOlder(maxAge, opts) {
   const last = Number(local.get('updateCheckedAt')) || 0;
-  if (AppUpdate && Date.now() - last > UPDATE_CHECK_EVERY_MS) checkUpdate();
+  if (AppUpdate && Date.now() - last > maxAge) checkUpdate(opts);
 }
 initUpdate().catch((e) => console.error(e));
+// Aplikasi kembali dibuka setelah lama di latar belakang → cek lagi (maks tiap 1 jam).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkUpdateIfOlder(UPDATE_CHECK_EVERY_MS);
+});
 
 // ---------- Sambung / kunci PIN / putus ----------
 function showOnly(id) {
